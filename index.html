@@ -807,9 +807,23 @@
             <option value="autre">Autre</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Coût (€)</label>
+          <input class="form-input" id="op-cost" type="number" step="0.01" placeholder="0.00">
+        </div>
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Notes</label>
           <textarea class="form-input" id="op-notes" placeholder="Marque huile, références pièces, observations..."></textarea>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Photo de la facture</label>
+          <div class="photo-upload-area" onclick="document.getElementById('op-invoice-input').click()">
+            <img id="op-invoice-preview" style="display:none;">
+            <div id="op-invoice-placeholder"><div style="font-size:24px;margin-bottom:4px;">🧾</div><div class="photo-placeholder-text">Appuyer pour photographier la facture</div></div>
+          </div>
+          <input type="hidden" id="op-invoice-data" value="">
+          <input type="file" id="op-invoice-input" accept="image/*" capture="environment" style="display:none"
+                 onchange="handlePhotoUpload('op-invoice-input','op-invoice-preview','op-invoice-placeholder','op-invoice-data')">
         </div>
       </div>
     </div>
@@ -1145,6 +1159,81 @@
   </div>
 </div>
 
+<!-- MODAL ENTRETIEN VÉHICULE -->
+<div class="modal-overlay" id="modal-entretien-vehicle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-ev-title">Entretien véhicule</div>
+      <button class="modal-close" onclick="closeModal('modal-entretien-vehicle')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" id="vent-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kilométrage</label>
+          <input class="form-input" id="vent-km" type="number" placeholder="45200">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Type d'entretien</label>
+          <select class="form-input" id="vent-type">
+            <option value="vidange">Vidange + filtre</option>
+            <option value="revision">Révision générale</option>
+            <option value="pneus">Pneus</option>
+            <option value="freins">Freins</option>
+            <option value="courroie">Courroie distribution</option>
+            <option value="batterie">Batterie</option>
+            <option value="climatisation">Climatisation</option>
+            <option value="controle_technique">Contrôle technique</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Coût (€)</label>
+          <input class="form-input" id="vent-cost" type="number" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Notes / Garage</label>
+          <textarea class="form-input" id="vent-notes" placeholder="Garage, pièces changées, observations..."></textarea>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Photo de la facture</label>
+          <div class="photo-upload-area" onclick="document.getElementById('vent-invoice-input').click()">
+            <img id="vent-invoice-preview" style="display:none;">
+            <div id="vent-invoice-placeholder"><div style="font-size:24px;margin-bottom:4px;">🧾</div><div class="photo-placeholder-text">Appuyer pour photographier la facture</div></div>
+          </div>
+          <input type="hidden" id="vent-invoice-data" value="">
+          <input type="file" id="vent-invoice-input" accept="image/*" capture="environment" style="display:none"
+                 onchange="handlePhotoUpload('vent-invoice-input','vent-invoice-preview','vent-invoice-placeholder','vent-invoice-data')">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-entretien-vehicle')">Annuler</button>
+      <button class="btn" onclick="saveEntretienVehicle()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FACTURE (visionneuse) -->
+<div class="modal-overlay" id="modal-invoice-viewer" onclick="closeModal('modal-invoice-viewer')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:600px;">
+    <div class="modal-header">
+      <div class="modal-title">Facture</div>
+      <button class="modal-close" onclick="closeModal('modal-invoice-viewer')">×</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:8px;">
+      <img id="invoice-viewer-img" style="max-width:100%;border-radius:6px;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="downloadInvoiceFromViewer()">⬇ Télécharger</button>
+      <button class="btn btn-danger" onclick="closeModal('modal-invoice-viewer')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GITHUB BACKUP -->
 <div class="modal-overlay" id="modal-github">
   <div class="modal">
@@ -1285,6 +1374,7 @@ function loadDB() {
   if (!DB.parkLastGNRAlertAt) DB.parkLastGNRAlertAt = 0;
   if (!DB.vehicles) DB.vehicles = [];
   if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
+  if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
 }
 
 function saveDB() {
@@ -1636,10 +1726,11 @@ function renderOperations(t) {
       <button class="btn btn-sm" onclick="openOpModal('${t.id}')">+ Opération</button>
     </div>
     ${ops.length === 0 ? '<div class="empty-state"><div class="icon">🔧</div>Aucune opération enregistrée</div>' :
-      ops.map(op => `<div class="log-entry">
+      ops.map(op => `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
         <span class="log-date">${op.date}</span>
         <span class="log-hours">${op.hours} h</span>
-        <span class="log-desc">${typeLabels[op.type]||op.type}${op.notes?' — '+op.notes:''}</span>
+        <span class="log-desc" style="flex:1;">${typeLabels[op.type]||op.type}${op.notes?' — '+op.notes:''}${op.cost?' · '+op.cost.toFixed(2)+'€':''}</span>
+        ${op.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${op.id}','op')">🧾</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteOp('${op.id}','${t.id}')">×</button>
       </div>`).join('')
     }`;
@@ -2185,7 +2276,12 @@ function openOpModal(id) {
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('op-hours').value = t.hours;
   document.getElementById('op-type').value = 'vidange';
+  document.getElementById('op-cost').value = '';
   document.getElementById('op-notes').value = '';
+  document.getElementById('op-invoice-data').value = '';
+  document.getElementById('op-invoice-input').value = '';
+  document.getElementById('op-invoice-preview').style.display = 'none';
+  document.getElementById('op-invoice-placeholder').style.display = 'block';
   openModal('modal-operation');
 }
 
@@ -2196,7 +2292,9 @@ function saveOperation() {
   const type = document.getElementById('op-type').value;
   const notes = document.getElementById('op-notes').value.trim();
 
-  DB.operations.push({ id: 'O'+Date.now(), tractorId: currentOpTractorId, date, hours, type, notes });
+  const cost = parseFloat(document.getElementById('op-cost').value) || 0;
+  const invoicePhoto = document.getElementById('op-invoice-data').value || null;
+  DB.operations.push({ id: 'O'+Date.now(), tractorId: currentOpTractorId, date, hours, type, notes, cost, invoicePhoto });
 
   // Update tractor hours if higher
   if (hours > t.hours) t.hours = hours;
@@ -2357,6 +2455,7 @@ function vehicleCard(v) {
           <div class="ctx-menu" id="vmenu-${v.id}">
             <button class="ctx-menu-item" onclick="openEditVehicle(event,'${v.id}')">✏️ Modifier</button>
             <button class="ctx-menu-item" onclick="openPleinVehicle(event,'${v.id}')">⛽ Plein gasoil</button>
+            <button class="ctx-menu-item" onclick="openEntretienVehicle(event,'${v.id}')">🔧 Entretien</button>
             <button class="ctx-menu-item danger" onclick="deleteVehicle(event,'${v.id}')">🗑 Supprimer</button>
           </div>
         </div>
@@ -2387,40 +2486,139 @@ function selectVehicle(id) {
   }
 }
 
+let vehicleDetailTab = 'pleins';
+
 function renderVehicleDetail(v) {
-  const pleins = DB.pleins_vehicules.filter(p => p.vehicleId === v.id).sort((a,b) => b.km - a.km);
   const container = document.getElementById('vehicle-detail-container');
-  let rows = '';
-  let prevKm = null;
+  const pleins = DB.pleins_vehicules.filter(p => p.vehicleId === v.id).sort((a,b) => b.km - a.km);
+  const entretiens = DB.entretiens_vehicules.filter(e => e.vehicleId === v.id).sort((a,b) => new Date(b.date)-new Date(a.date));
+
+  // Pleins rows
   const sorted_asc = [...pleins].sort((a,b) => a.km - b.km);
   const consoMap = {};
   for (let i = 1; i < sorted_asc.length; i++) {
     const km = sorted_asc[i].km - sorted_asc[i-1].km;
     if (km > 0) consoMap[sorted_asc[i].id] = (sorted_asc[i].liters / km * 100);
   }
-  if (pleins.length === 0) {
-    rows = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun plein enregistré</div>`;
-  } else {
-    rows = `<div class="pv-row pv-row-head">
-      <span>Date</span><span>Station</span><span>km</span><span>Litres</span><span>€/L</span>
-    </div>` + pleins.map(p => {
-      const conso = consoMap[p.id] ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-left:4px;">${consoMap[p.id].toFixed(1)} L/100</span>` : '';
-      return `<div class="pv-row">
-        <span style="font-family:var(--mono);font-size:11px;">${p.date}</span>
-        <span>${p.station||'—'}${conso}</span>
-        <span style="font-family:var(--mono);">${p.km.toLocaleString('fr')}</span>
-        <span style="font-family:var(--mono);">${p.liters.toFixed(1)} L<br><span style="font-size:10px;color:var(--text-dim);">${p.total.toFixed(2)}€</span></span>
-        <span style="font-family:var(--mono);">${p.pricePerLiter.toFixed(3)}</span>
-      </div>`;
-    }).join('');
-  }
+  const pleinsHtml = pleins.length === 0
+    ? `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun plein enregistré</div>`
+    : `<div class="pv-row pv-row-head"><span>Date</span><span>Station</span><span>km</span><span>Litres</span><span>€/L</span></div>`
+      + pleins.map(p => {
+        const conso = consoMap[p.id] ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-left:4px;">${consoMap[p.id].toFixed(1)} L/100</span>` : '';
+        return `<div class="pv-row">
+          <span style="font-family:var(--mono);font-size:11px;">${p.date}</span>
+          <span>${p.station||'—'}${conso}</span>
+          <span style="font-family:var(--mono);">${p.km.toLocaleString('fr')}</span>
+          <span style="font-family:var(--mono);">${p.liters.toFixed(1)} L<br><span style="font-size:10px;color:var(--text-dim);">${p.total.toFixed(2)}€</span></span>
+          <span style="font-family:var(--mono);">${p.pricePerLiter.toFixed(3)}</span>
+        </div>`;
+      }).join('');
+
+  // Entretien labels
+  const typeLabelsV = { vidange:'Vidange', revision:'Révision', pneus:'Pneus', freins:'Freins',
+    courroie:'Courroie', batterie:'Batterie', climatisation:'Climatisation',
+    controle_technique:'CT', autre:'Autre' };
+  const entretiensHtml = entretiens.length === 0
+    ? `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun entretien enregistré</div>`
+    : entretiens.map(e => `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
+        <span class="log-date">${e.date}</span>
+        <span class="log-hours">${e.km.toLocaleString('fr')} km</span>
+        <span class="log-desc" style="flex:1;">${typeLabelsV[e.type]||e.type}${e.notes?' — '+e.notes:''}${e.cost?' · '+e.cost.toFixed(2)+'€':''}</span>
+        ${e.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${e.id}','vent')">🧾</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deleteEntretienV('${e.id}','${v.id}')">×</button>
+      </div>`).join('');
+
   container.innerHTML = `<div class="vehicle-detail">
     <div class="vehicle-detail-header">
-      <div style="font-weight:600;">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name} — Historique pleins</div>
-      <button class="btn btn-sm" onclick="openPleinVehicle(event,'${v.id}')">+ Plein</button>
+      <div style="font-weight:600;">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name}</div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-sm" onclick="openPleinVehicle(event,'${v.id}')">⛽ Plein</button>
+        <button class="btn btn-sm" onclick="openEntretienVehicle(event,'${v.id}')">🔧 Entretien</button>
+      </div>
     </div>
-    ${rows}
+    <div style="display:flex;border-bottom:1px solid var(--border);">
+      <button onclick="vehicleDetailTab='pleins';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))"
+        style="flex:1;padding:10px;border:none;background:${vehicleDetailTab==='pleins'?'var(--surface)':'var(--surface2)'};font-weight:${vehicleDetailTab==='pleins'?'600':'400'};border-bottom:${vehicleDetailTab==='pleins'?'2px solid var(--accent)':'2px solid transparent'};cursor:pointer;font-size:13px;">
+        ⛽ Pleins (${pleins.length})
+      </button>
+      <button onclick="vehicleDetailTab='entretien';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))"
+        style="flex:1;padding:10px;border:none;background:${vehicleDetailTab==='entretien'?'var(--surface)':'var(--surface2)'};font-weight:${vehicleDetailTab==='entretien'?'600':'400'};border-bottom:${vehicleDetailTab==='entretien'?'2px solid var(--accent)':'2px solid transparent'};cursor:pointer;font-size:13px;">
+        🔧 Entretien (${entretiens.length})
+      </button>
+    </div>
+    <div style="padding:4px 0;">
+      ${vehicleDetailTab === 'pleins' ? pleinsHtml : entretiensHtml}
+    </div>
   </div>`;
+}
+
+function openEntretienVehicle(e, id) {
+  if (e) e.stopPropagation();
+  document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+  currentVehicleId = id;
+  const v = DB.vehicles.find(x => x.id === id);
+  document.getElementById('modal-ev-title').textContent = `Entretien — ${v.name}`;
+  document.getElementById('vent-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('vent-km').value = v.km;
+  document.getElementById('vent-type').value = 'vidange';
+  document.getElementById('vent-cost').value = '';
+  document.getElementById('vent-notes').value = '';
+  document.getElementById('vent-invoice-data').value = '';
+  document.getElementById('vent-invoice-input').value = '';
+  document.getElementById('vent-invoice-preview').style.display = 'none';
+  document.getElementById('vent-invoice-placeholder').style.display = 'block';
+  openModal('modal-entretien-vehicle');
+}
+
+function saveEntretienVehicle() {
+  const v = DB.vehicles.find(x => x.id === currentVehicleId);
+  const km = parseInt(document.getElementById('vent-km').value) || v.km;
+  DB.entretiens_vehicules.push({
+    id: 'EV'+Date.now(),
+    vehicleId: currentVehicleId,
+    date: document.getElementById('vent-date').value,
+    km,
+    type: document.getElementById('vent-type').value,
+    cost: parseFloat(document.getElementById('vent-cost').value) || 0,
+    notes: document.getElementById('vent-notes').value.trim(),
+    invoicePhoto: document.getElementById('vent-invoice-data').value || null
+  });
+  if (km > v.km) v.km = km;
+  saveDB();
+  closeModal('modal-entretien-vehicle');
+  vehicleDetailTab = 'entretien';
+  renderVehicles();
+}
+
+function deleteEntretienV(id, vehicleId) {
+  DB.entretiens_vehicules = DB.entretiens_vehicules.filter(e => e.id !== id);
+  saveDB();
+  renderVehicleDetail(DB.vehicles.find(v => v.id === vehicleId));
+}
+
+let _currentInvoiceUrl = null;
+
+function viewInvoice(id, source) {
+  let photo = null;
+  if (source === 'op') {
+    const op = DB.operations.find(o => o.id === id);
+    photo = op && op.invoicePhoto;
+  } else if (source === 'vent') {
+    const e = DB.entretiens_vehicules.find(x => x.id === id);
+    photo = e && e.invoicePhoto;
+  }
+  if (!photo) return;
+  _currentInvoiceUrl = photo;
+  document.getElementById('invoice-viewer-img').src = photo;
+  openModal('modal-invoice-viewer');
+}
+
+function downloadInvoiceFromViewer() {
+  if (!_currentInvoiceUrl) return;
+  const a = document.createElement('a');
+  a.href = _currentInvoiceUrl;
+  a.download = 'facture_' + new Date().toISOString().slice(0,10) + '.jpg';
+  a.click();
 }
 
 function openAddVehicle() {
