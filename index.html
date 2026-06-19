@@ -501,6 +501,12 @@
   .pv-row:last-child { border-bottom: none; }
   .pv-row-head { background: var(--surface2); font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: var(--text-dim); }
 
+  /* ── CROP ── */
+  .crop-h {
+    position: absolute; width: 22px; height: 22px;
+    border: 3px solid #fff; background: rgba(255,255,255,0.15);
+    border-radius: 3px; cursor: pointer; touch-action: none;
+  }
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
     header { padding: 0 10px; gap: 6px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
@@ -1098,6 +1104,35 @@
       <button class="btn btn-danger" onclick="closeModal('modal-entretien-vehicle')">Annuler</button>
       <button class="btn" onclick="saveEntretienVehicle()">Enregistrer</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL RECADRAGE PHOTO -->
+<div id="modal-crop" style="display:none;position:fixed;inset:0;z-index:1000;background:#000;flex-direction:column;">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#111;color:#fff;flex-shrink:0;">
+    <button onclick="cancelCrop()" style="background:none;border:1.5px solid rgba(255,255,255,0.3);color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;cursor:pointer;">Annuler</button>
+    <span style="font-family:var(--mono);font-size:11px;opacity:0.6;letter-spacing:0.1em;text-transform:uppercase;">Recadrer</span>
+    <button onclick="confirmCrop()" style="background:#2e7d32;border:none;color:#fff;padding:9px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:700;">✓ OK</button>
+  </div>
+  <div id="crop-area" style="flex:1;position:relative;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;">
+    <img id="crop-img-el" style="position:absolute;pointer-events:none;user-select:none;-webkit-user-select:none;" draggable="false">
+    <div id="crop-box-el" style="position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,0.52);touch-action:none;">
+      <!-- Grille des tiers -->
+      <div style="position:absolute;inset:0;pointer-events:none;">
+        <div style="position:absolute;left:33.3%;top:0;bottom:0;border-left:1px solid rgba(255,255,255,0.22);"></div>
+        <div style="position:absolute;left:66.6%;top:0;bottom:0;border-left:1px solid rgba(255,255,255,0.22);"></div>
+        <div style="position:absolute;top:33.3%;left:0;right:0;border-top:1px solid rgba(255,255,255,0.22);"></div>
+        <div style="position:absolute;top:66.6%;left:0;right:0;border-top:1px solid rgba(255,255,255,0.22);"></div>
+      </div>
+      <!-- Poignées de coin -->
+      <div class="crop-h" data-dir="tl" style="top:-10px;left:-10px;border-right:none;border-bottom:none;"></div>
+      <div class="crop-h" data-dir="tr" style="top:-10px;right:-10px;border-left:none;border-bottom:none;"></div>
+      <div class="crop-h" data-dir="bl" style="bottom:-10px;left:-10px;border-right:none;border-top:none;"></div>
+      <div class="crop-h" data-dir="br" style="bottom:-10px;right:-10px;border-left:none;border-top:none;"></div>
+    </div>
+  </div>
+  <div style="padding:10px 16px;background:#111;text-align:center;flex-shrink:0;">
+    <button onclick="resetCrop()" style="background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.7);padding:7px 20px;border-radius:8px;font-size:12px;cursor:pointer;">↺ Réinitialiser</button>
   </div>
 </div>
 
@@ -2049,29 +2084,136 @@ function toggleCardMenu(e, menuId) {
   document.getElementById(menuId).classList.toggle('open');
 }
 
+// ===================== PHOTO CROP =====================
+let _cropCallback = null;
+let _cropOrigSrc = null;
+let _cropBox = { x: 0, y: 0, w: 0, h: 0 };
+let _cropImgPos = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+let _cropDrag = null;
+let _cropDefaultBox = null;
+
 function handlePhotoUpload(inputId, previewId, placeholderId, dataId) {
   const file = document.getElementById(inputId).files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let w = img.width, h = img.height;
-      if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-      else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    openCropModal(ev.target.result, dataUrl => {
       document.getElementById(previewId).src = dataUrl;
       document.getElementById(previewId).style.display = 'block';
       document.getElementById(placeholderId).style.display = 'none';
       document.getElementById(dataId).value = dataUrl;
-    };
-    img.src = ev.target.result;
+    });
   };
   reader.readAsDataURL(file);
+}
+
+function openCropModal(src, callback) {
+  _cropCallback = callback;
+  _cropOrigSrc = src;
+  const modal = document.getElementById('modal-crop');
+  modal.style.display = 'flex';
+  const imgEl = document.getElementById('crop-img-el');
+  imgEl.onload = _initCrop;
+  imgEl.src = src;
+  if (imgEl.complete && imgEl.naturalWidth) _initCrop();
+}
+
+function _initCrop() {
+  const area = document.getElementById('crop-area');
+  const imgEl = document.getElementById('crop-img-el');
+  const aw = area.clientWidth, ah = area.clientHeight;
+  const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+  const scale = Math.min(aw / iw, ah / ih);
+  const dw = iw * scale, dh = ih * scale;
+  const dx = (aw - dw) / 2, dy = (ah - dh) / 2;
+  imgEl.style.cssText = `position:absolute;left:${dx}px;top:${dy}px;width:${dw}px;height:${dh}px;pointer-events:none;user-select:none;-webkit-user-select:none;`;
+  _cropImgPos = { x: dx, y: dy, w: dw, h: dh, scale };
+  const pad = 0.08;
+  _cropDefaultBox = { x: dx + dw*pad, y: dy + dh*pad, w: dw*(1-2*pad), h: dh*(1-2*pad) };
+  _cropBox = { ..._cropDefaultBox };
+  _updateCropBoxEl();
+  _attachCropEvents();
+}
+
+function _updateCropBoxEl() {
+  const el = document.getElementById('crop-box-el');
+  el.style.left = _cropBox.x + 'px';
+  el.style.top  = _cropBox.y + 'px';
+  el.style.width  = _cropBox.w + 'px';
+  el.style.height = _cropBox.h + 'px';
+}
+
+function _attachCropEvents() {
+  const box  = document.getElementById('crop-box-el');
+  const area = document.getElementById('crop-area');
+
+  const pt = e => e.touches ? e.touches[0] : e;
+
+  box.onmousedown = box.ontouchstart = e => {
+    if (e.target.classList.contains('crop-h')) return;
+    _cropDrag = { type: 'move', sx: pt(e).clientX, sy: pt(e).clientY, b: { ..._cropBox } };
+    e.preventDefault();
+  };
+
+  document.querySelectorAll('.crop-h').forEach(h => {
+    h.onmousedown = h.ontouchstart = e => {
+      _cropDrag = { type: 'resize', dir: h.dataset.dir, sx: pt(e).clientX, sy: pt(e).clientY, b: { ..._cropBox } };
+      e.stopPropagation(); e.preventDefault();
+    };
+  });
+
+  area.onmousemove = area.ontouchmove = e => {
+    if (!_cropDrag) return;
+    const dx = pt(e).clientX - _cropDrag.sx;
+    const dy = pt(e).clientY - _cropDrag.sy;
+    const b = _cropDrag.b, img = _cropImgPos, MIN = 60;
+    if (_cropDrag.type === 'move') {
+      _cropBox.x = Math.min(Math.max(b.x + dx, img.x), img.x + img.w - b.w);
+      _cropBox.y = Math.min(Math.max(b.y + dy, img.y), img.y + img.h - b.h);
+    } else {
+      let { x, y, w, h } = b;
+      const dir = _cropDrag.dir;
+      if (dir.includes('r')) w = Math.max(MIN, Math.min(b.w + dx, img.x + img.w - b.x));
+      if (dir.includes('b')) h = Math.max(MIN, Math.min(b.h + dy, img.y + img.h - b.y));
+      if (dir.includes('l')) { const nx = Math.max(img.x, Math.min(b.x + dx, b.x + b.w - MIN)); w = b.x + b.w - nx; x = nx; }
+      if (dir.includes('t')) { const ny = Math.max(img.y, Math.min(b.y + dy, b.y + b.h - MIN)); h = b.y + b.h - ny; y = ny; }
+      _cropBox = { x, y, w, h };
+    }
+    _updateCropBoxEl();
+    e.preventDefault();
+  };
+
+  area.onmouseup = area.ontouchend = () => { _cropDrag = null; };
+}
+
+function resetCrop() {
+  if (_cropDefaultBox) { _cropBox = { ..._cropDefaultBox }; _updateCropBoxEl(); }
+}
+
+function cancelCrop() {
+  document.getElementById('modal-crop').style.display = 'none';
+  _cropCallback = null;
+}
+
+function confirmCrop() {
+  const box = _cropBox, img = _cropImgPos;
+  const srcX = (box.x - img.x) / img.scale;
+  const srcY = (box.y - img.y) / img.scale;
+  const srcW = box.w / img.scale;
+  const srcH = box.h / img.scale;
+  const orig = new Image();
+  orig.onload = () => {
+    const MAX = 1200;
+    let ow = srcW, oh = srcH;
+    if (ow > MAX || oh > MAX) { const s = MAX / Math.max(ow, oh); ow = Math.round(ow*s); oh = Math.round(oh*s); }
+    const canvas = document.createElement('canvas');
+    canvas.width = ow; canvas.height = oh;
+    canvas.getContext('2d').drawImage(orig, srcX, srcY, srcW, srcH, 0, 0, ow, oh);
+    const result = canvas.toDataURL('image/jpeg', 0.82);
+    document.getElementById('modal-crop').style.display = 'none';
+    if (_cropCallback) { _cropCallback(result); _cropCallback = null; }
+  };
+  orig.src = _cropOrigSrc;
 }
 
 function downloadTractorPhoto(id) {
