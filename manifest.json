@@ -1,0 +1,16 @@
+{
+  "name": "Suivi Matériel",
+  "short_name": "Suivi Mat.",
+  "description": "Suivi entretien et carburant — parc de machines agricoles",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f3",
+  "theme_color": "#2e7d32",
+  "lang": "fr",
+  "orientation": "any",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg",     "sizes": "any",      "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
