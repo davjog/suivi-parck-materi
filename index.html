@@ -2133,44 +2133,57 @@ function importData(event) {
 let _installPrompt = null;
 
 const _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const _isAndroid = /android/i.test(navigator.userAgent);
 const _isStandalone = window.navigator.standalone === true
   || window.matchMedia('(display-mode: standalone)').matches;
 
-// iOS — show a persistent banner with manual instructions
-if (_isIOS && !_isStandalone) {
+function _showInstallBar(mode) {
+  if (document.getElementById('install-bar')) return;
   const bar = document.createElement('div');
-  bar.id = 'ios-install-bar';
-  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#2e7d32;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:sans-serif;font-size:13px;gap:10px;';
-  bar.innerHTML = `
-    <span>📲 Pour installer : appuyez sur <strong>⬆ Partager</strong> puis <strong>Sur l'écran d'accueil</strong></span>
-    <button onclick="document.getElementById('ios-install-bar').remove()" style="background:rgba(255,255,255,0.25);border:none;color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;">✕</button>`;
+  bar.id = 'install-bar';
+  bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#2e7d32;color:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-size:14px;gap:10px;box-shadow:0 -2px 12px rgba(0,0,0,0.2);';
+  if (mode === 'prompt') {
+    bar.innerHTML = `
+      <span style="flex:1">📲 Installer l'appli sur cet appareil ?</span>
+      <button id="btn-install-bar" style="background:#fff;color:#2e7d32;border:none;border-radius:6px;padding:7px 16px;font-weight:700;font-size:14px;cursor:pointer;">Installer</button>
+      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
+    bar.querySelector('#btn-install-bar').onclick = () => { installApp(); bar.remove(); };
+  } else if (mode === 'ios') {
+    bar.innerHTML = `
+      <span style="flex:1">📲 Installer : appuyez sur <strong>⬆ Partager</strong> → <strong>Sur l'écran d'accueil</strong></span>
+      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
+  } else {
+    // manual fallback for Android when beforeinstallprompt didn't fire
+    bar.innerHTML = `
+      <span style="flex:1">📲 Installer : appuyez sur <strong>⋮</strong> → <strong>Ajouter à l'écran d'accueil</strong></span>
+      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
+  }
   document.body.appendChild(bar);
 }
 
-// Android / Chrome — use beforeinstallprompt
+if (!_isStandalone) {
+  if (_isIOS) {
+    _showInstallBar('ios');
+  } else if (_isAndroid) {
+    // show manual instructions immediately; upgrade to auto-prompt if event fires
+    _showInstallBar('manual');
+  }
+}
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _installPrompt = e;
   document.getElementById('btn-install').style.display = 'inline-block';
-  // also show a bottom banner
-  if (!document.getElementById('android-install-bar')) {
-    const bar = document.createElement('div');
-    bar.id = 'android-install-bar';
-    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#2e7d32;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:sans-serif;font-size:13px;gap:10px;';
-    bar.innerHTML = `
-      <span>📲 Installer l'appli sur votre appareil ?</span>
-      <div style="display:flex;gap:8px;">
-        <button onclick="installApp();document.getElementById('android-install-bar').remove()" style="background:#fff;color:#2e7d32;border:none;border-radius:6px;padding:6px 14px;font-weight:600;cursor:pointer;">Installer</button>
-        <button onclick="document.getElementById('android-install-bar').remove()" style="background:rgba(255,255,255,0.25);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;">✕</button>
-      </div>`;
-    document.body.appendChild(bar);
-  }
+  // upgrade bar to automatic install
+  const existing = document.getElementById('install-bar');
+  if (existing) existing.remove();
+  _showInstallBar('prompt');
 });
 
 window.addEventListener('appinstalled', () => {
   document.getElementById('btn-install').style.display = 'none';
   _installPrompt = null;
-  const b = document.getElementById('android-install-bar');
+  const b = document.getElementById('install-bar');
   if (b) b.remove();
 });
 
