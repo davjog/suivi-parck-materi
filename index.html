@@ -626,6 +626,7 @@
 
     <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
     <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
+    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub">☁ GitHub</button>
   </div>
 </header>
 
@@ -959,6 +960,40 @@
     <div class="modal-footer">
       <button class="btn btn-danger" onclick="closeModal('modal-travaux')">Annuler</button>
       <button class="btn" onclick="saveTravaux()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GITHUB BACKUP -->
+<div class="modal-overlay" id="modal-github">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">☁ Sauvegarde GitHub</div>
+      <button class="modal-close" onclick="closeModal('modal-github')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.5;">
+        Sauvegarde les données dans un fichier JSON sur votre dépôt GitHub.<br>
+        Créez un <strong>Personal Access Token</strong> sur github.com → Settings → Developer settings → Tokens (classic) avec le scope <code>repo</code>.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Token GitHub</label>
+        <input class="form-input" id="gh-token" type="password" placeholder="ghp_xxxxxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dépôt (propriétaire/nom)</label>
+        <input class="form-input" id="gh-repo" placeholder="ex: davjog/suivi-backup">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nom du fichier</label>
+        <input class="form-input" id="gh-path" placeholder="backup.json" value="backup.json">
+      </div>
+      <div id="gh-status" style="font-size:12px;min-height:18px;margin-top:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-github')">Fermer</button>
+      <button class="btn" style="background:#24292f;color:#fff;" onclick="restoreFromGithub()">⬇ Restaurer</button>
+      <button class="btn" onclick="saveToGithub()">☁ Sauvegarder</button>
     </div>
   </div>
 </div>
@@ -2142,6 +2177,87 @@ function importData(event) {
   };
   reader.readAsText(file);
   event.target.value = ''; // reset input
+}
+
+// ===================== GITHUB BACKUP =====================
+const GH_SETTINGS_KEY = 'gh_backup_settings';
+
+function openGithubModal() {
+  const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
+  document.getElementById('gh-token').value = s.token || '';
+  document.getElementById('gh-repo').value = s.repo || '';
+  document.getElementById('gh-path').value = s.path || 'backup.json';
+  document.getElementById('gh-status').textContent = '';
+  openModal('modal-github');
+}
+
+function _ghSettings() {
+  const token = document.getElementById('gh-token').value.trim();
+  const repo  = document.getElementById('gh-repo').value.trim();
+  const path  = document.getElementById('gh-path').value.trim() || 'backup.json';
+  if (!token || !repo) {
+    document.getElementById('gh-status').textContent = '⚠ Token et dépôt requis.';
+    return null;
+  }
+  localStorage.setItem(GH_SETTINGS_KEY, JSON.stringify({ token, repo, path }));
+  return { token, repo, path };
+}
+
+function _ghStatus(msg, ok) {
+  const el = document.getElementById('gh-status');
+  if (el) { el.textContent = msg; el.style.color = ok ? '#2e7d32' : '#c62828'; }
+}
+
+async function saveToGithub() {
+  const s = _ghSettings(); if (!s) return;
+  _ghStatus('Sauvegarde en cours…');
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(DB, null, 2))));
+  const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
+  const headers = { 'Authorization': `token ${s.token}`, 'Content-Type': 'application/json' };
+  // get current sha if file exists
+  let sha;
+  try {
+    const r = await fetch(url, { headers });
+    if (r.ok) { sha = (await r.json()).sha; }
+  } catch(_) {}
+  const body = { message: `Sauvegarde ${new Date().toLocaleString('fr')}`, content };
+  if (sha) body.sha = sha;
+  const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
+  if (res.ok) {
+    _ghStatus('✓ Sauvegardé sur GitHub !', true);
+  } else {
+    const err = await res.json().catch(() => ({}));
+    _ghStatus('✗ Erreur : ' + (err.message || res.status));
+  }
+}
+
+async function restoreFromGithub() {
+  const s = _ghSettings(); if (!s) return;
+  _ghStatus('Téléchargement en cours…');
+  const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
+  const headers = { 'Authorization': `token ${s.token}` };
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    _ghStatus('✗ Fichier introuvable : ' + res.status);
+    return;
+  }
+  const { content } = await res.json();
+  const json = decodeURIComponent(escape(atob(content.replace(/\n/g, ''))));
+  try {
+    const imported = JSON.parse(json);
+    if (!imported.tractors) throw new Error('Format invalide');
+    if (!confirm(`Restaurer ${imported.tractors.length} machine(s) depuis GitHub ? Les données actuelles seront remplacées.`)) return;
+    DB = imported;
+    if (!DB.travaux_log) DB.travaux_log = [];
+    saveDB();
+    selectedTractorId = null;
+    document.getElementById('detail-panel-container').innerHTML = '';
+    renderFleet();
+    closeModal('modal-github');
+    _ghStatus('✓ Restauré !', true);
+  } catch(err) {
+    _ghStatus('✗ Données invalides : ' + err.message);
+  }
 }
 
 // ===================== PWA INSTALL =====================
