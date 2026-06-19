@@ -570,6 +570,45 @@
   .ctx-menu-item.danger { color: var(--danger); }
   .ctx-menu-item.danger:hover { background: rgba(198,40,40,0.08); }
   .ctx-menu-divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+  /* PHOTO TRACTEUR */
+  .card-photo {
+    width: 100%;
+    height: 90px;
+    background: var(--surface2) center/cover no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--border);
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .photo-upload-area {
+    border: 1.5px dashed var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 6px;
+    background: #f9faf8;
+    transition: border-color 0.15s;
+  }
+  .photo-upload-area:hover { border-color: var(--accent); }
+  .photo-upload-area img { max-width: 100%; max-height: 130px; border-radius: 4px; object-fit: cover; }
+  .photo-placeholder-text {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
 </style>
 </head>
 <body>
@@ -635,6 +674,19 @@
       <button class="modal-close" onclick="closeModal('modal-add-tractor')">×</button>
     </div>
     <div class="modal-body">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Photo</label>
+        <div class="photo-upload-area" onclick="document.getElementById('new-photo-input').click()">
+          <img id="new-photo-preview" style="display:none;">
+          <div id="new-photo-placeholder">
+            <div style="font-size:24px;margin-bottom:4px;">📷</div>
+            <div class="photo-placeholder-text">Appuyer pour ajouter une photo</div>
+          </div>
+        </div>
+        <input type="hidden" id="new-photo-data" value="">
+        <input type="file" id="new-photo-input" accept="image/*" capture="environment" style="display:none"
+               onchange="handlePhotoUpload('new-photo-input','new-photo-preview','new-photo-placeholder','new-photo-data')">
+      </div>
       <div class="form-grid">
         <div class="form-group" style="grid-column: 1/-1;">
           <label class="form-label">Nom / Identifiant</label>
@@ -818,6 +870,19 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="edit-id">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Photo</label>
+        <div class="photo-upload-area" onclick="document.getElementById('edit-photo-input').click()">
+          <img id="edit-photo-preview" style="display:none;">
+          <div id="edit-photo-placeholder">
+            <div style="font-size:24px;margin-bottom:4px;">📷</div>
+            <div class="photo-placeholder-text">Appuyer pour changer la photo</div>
+          </div>
+        </div>
+        <input type="hidden" id="edit-photo-data" value="">
+        <input type="file" id="edit-photo-input" accept="image/*" capture="environment" style="display:none"
+               onchange="handlePhotoUpload('edit-photo-input','edit-photo-preview','edit-photo-placeholder','edit-photo-data')">
+      </div>
       <div class="form-grid">
         <div class="form-group" style="grid-column: 1/-1;">
           <label class="form-label">Nom / Identifiant</label>
@@ -1046,7 +1111,11 @@ function tractorCard(t) {
   const lastOp = DB.operations.filter(o => o.tractorId === t.id).sort((a,b) => b.hours - a.hours)[0];
   const totalGNR = DB.pleins.filter(p => p.tractorId === t.id).reduce((s,p) => s + (p.gnr||0), 0);
 
+  const photoStyle = t.photo ? `background-image:url('${t.photo}')` : '';
+  const photoContent = t.photo ? '' : '🚜';
+
   return `<div class="tractor-card${selectedTractorId===t.id?' selected':''}" onclick="selectTractor('${t.id}')">
+    <div class="card-photo" style="${photoStyle}">${photoContent}</div>
     <div class="card-header">
       <div>
         <div class="card-name">${t.name}</div>
@@ -1709,6 +1778,10 @@ function openAddTractor() {
   document.getElementById('new-hours').value = '';
   document.getElementById('new-next-service').value = '';
   document.getElementById('custom-plan-fields').style.display = 'none';
+  document.getElementById('new-photo-data').value = '';
+  document.getElementById('new-photo-input').value = '';
+  document.getElementById('new-photo-preview').style.display = 'none';
+  document.getElementById('new-photo-placeholder').style.display = 'block';
   openModal('modal-add-tractor');
 }
 
@@ -1740,10 +1813,11 @@ function saveTractor() {
     };
   }
 
+  const photo = document.getElementById('new-photo-data').value || null;
   DB.tractors.push({
     id: 'T'+Date.now(),
     name, model, year, hours, nextService,
-    lastServiceHours: 0, customPlan
+    lastServiceHours: 0, customPlan, photo
   });
   saveDB();
   closeModal('modal-add-tractor');
@@ -1770,6 +1844,31 @@ function toggleCardMenu(e, menuId) {
   document.getElementById(menuId).classList.toggle('open');
 }
 
+function handlePhotoUpload(inputId, previewId, placeholderId, dataId) {
+  const file = document.getElementById(inputId).files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let w = img.width, h = img.height;
+      if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+      document.getElementById(previewId).src = dataUrl;
+      document.getElementById(previewId).style.display = 'block';
+      document.getElementById(placeholderId).style.display = 'none';
+      document.getElementById(dataId).value = dataUrl;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function openEditTractor(e, id) {
   e.stopPropagation();
   document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
@@ -1780,6 +1879,16 @@ function openEditTractor(e, id) {
   document.getElementById('edit-year').value = t.year;
   document.getElementById('edit-hours').value = t.hours;
   document.getElementById('edit-next-service').value = t.nextService || '';
+  document.getElementById('edit-photo-input').value = '';
+  document.getElementById('edit-photo-data').value = t.photo || '';
+  if (t.photo) {
+    document.getElementById('edit-photo-preview').src = t.photo;
+    document.getElementById('edit-photo-preview').style.display = 'block';
+    document.getElementById('edit-photo-placeholder').style.display = 'none';
+  } else {
+    document.getElementById('edit-photo-preview').style.display = 'none';
+    document.getElementById('edit-photo-placeholder').style.display = 'block';
+  }
   openModal('modal-edit-tractor');
 }
 
@@ -1791,6 +1900,8 @@ function saveEditTractor() {
   t.year = parseInt(document.getElementById('edit-year').value) || t.year;
   t.hours = parseInt(document.getElementById('edit-hours').value) || t.hours;
   t.nextService = parseInt(document.getElementById('edit-next-service').value) || t.nextService;
+  const newPhoto = document.getElementById('edit-photo-data').value;
+  if (newPhoto) t.photo = newPhoto;
   saveDB();
   closeModal('modal-edit-tractor');
   renderFleet();
