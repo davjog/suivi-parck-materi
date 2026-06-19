@@ -883,6 +883,7 @@
         <input type="hidden" id="edit-photo-data" value="">
         <input type="file" id="edit-photo-input" accept="image/*" capture="environment" style="display:none"
                onchange="handlePhotoUpload('edit-photo-input','edit-photo-preview','edit-photo-placeholder','edit-photo-data')">
+        <button id="edit-photo-dl-btn" type="button" style="display:none;margin-top:8px;width:100%;padding:8px;background:#f0f4f0;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;" onclick="downloadTractorPhoto(document.getElementById('edit-id').value)">⬇ Télécharger la photo</button>
       </div>
       <div class="form-grid">
         <div class="form-group" style="grid-column: 1/-1;">
@@ -1172,7 +1173,10 @@ function renderDetailPanel(t) {
   const plan = MAINTENANCE_PLANS[t.model] || MAINTENANCE_PLANS['custom'];
   const container = document.getElementById('detail-panel-container');
   const photoHtml = t.photo
-    ? `<div style="width:100%;height:160px;background:url('${t.photo}') center/cover no-repeat;border-radius:10px 10px 0 0;flex-shrink:0;"></div>`
+    ? `<div style="position:relative;width:100%;height:160px;flex-shrink:0;">
+        <div style="width:100%;height:100%;background:url('${t.photo}') center/cover no-repeat;border-radius:10px 10px 0 0;"></div>
+        <button onclick="downloadTractorPhoto('${t.id}')" style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;backdrop-filter:blur(4px);">⬇ Télécharger</button>
+       </div>`
     : '';
   container.innerHTML = `
     <div class="detail-panel" style="padding-top:0;overflow:hidden;">
@@ -1876,6 +1880,15 @@ function handlePhotoUpload(inputId, previewId, placeholderId, dataId) {
   reader.readAsDataURL(file);
 }
 
+function downloadTractorPhoto(id) {
+  const t = DB.tractors.find(x => x.id === id);
+  if (!t || !t.photo) return;
+  const a = document.createElement('a');
+  a.href = t.photo;
+  a.download = (t.name || 'tracteur').replace(/\s+/g, '_') + '.jpg';
+  a.click();
+}
+
 function openEditTractor(e, id) {
   e.stopPropagation();
   document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
@@ -1892,9 +1905,11 @@ function openEditTractor(e, id) {
     document.getElementById('edit-photo-preview').src = t.photo;
     document.getElementById('edit-photo-preview').style.display = 'block';
     document.getElementById('edit-photo-placeholder').style.display = 'none';
+    document.getElementById('edit-photo-dl-btn').style.display = 'block';
   } else {
     document.getElementById('edit-photo-preview').style.display = 'none';
     document.getElementById('edit-photo-placeholder').style.display = 'block';
+    document.getElementById('edit-photo-dl-btn').style.display = 'none';
   }
   openModal('modal-edit-tractor');
 }
