@@ -503,13 +503,14 @@
 
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
-    header { padding: 0 12px; gap: 8px; }
+    header { padding: 0 10px; gap: 6px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
     main { padding: 16px 12px; }
     .logo span { display: none; }
     .fleet-grid { grid-template-columns: 1fr; }
     .section-title { font-size: 17px; }
     .panel-content { padding: 14px; }
-    .header-actions .btn-sm:not(:first-child) { display: none; }
+    .nav-tabs { order: 3; width: 100%; }
+    .header-actions { flex-shrink: 0; }
   }
 </style>
 </head>
@@ -526,9 +527,9 @@
   </div>
   <div class="header-actions">
     <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
-    <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾</button>
-    <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub">☁</button>
+    <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
+    <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
+    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub">☁ GitHub</button>
   </div>
 </header>
 
