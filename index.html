@@ -1001,6 +1001,16 @@
       <button class="modal-close" onclick="closeModal('modal-add-vehicle')">×</button>
     </div>
     <div class="modal-body">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Photo</label>
+        <div class="photo-upload-area" onclick="document.getElementById('nv-photo-input').click()">
+          <img id="nv-photo-preview" style="display:none;">
+          <div id="nv-photo-placeholder"><div style="font-size:24px;margin-bottom:4px;">📷</div><div class="photo-placeholder-text">Appuyer pour ajouter une photo</div></div>
+        </div>
+        <input type="hidden" id="nv-photo-data" value="">
+        <input type="file" id="nv-photo-input" accept="image/*" capture="environment" style="display:none"
+               onchange="handlePhotoUpload('nv-photo-input','nv-photo-preview','nv-photo-placeholder','nv-photo-data')">
+      </div>
       <div class="form-grid">
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Nom / Identifiant</label>
@@ -1045,6 +1055,18 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="ev-id">
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="form-label">Photo</label>
+        <div class="photo-upload-area" onclick="document.getElementById('ev-photo-input').click()">
+          <img id="ev-photo-preview" style="display:none;">
+          <div id="ev-photo-placeholder"><div style="font-size:24px;margin-bottom:4px;">📷</div><div class="photo-placeholder-text">Appuyer pour changer la photo</div></div>
+        </div>
+        <input type="hidden" id="ev-photo-data" value="">
+        <input type="file" id="ev-photo-input" accept="image/*" capture="environment" style="display:none"
+               onchange="handlePhotoUpload('ev-photo-input','ev-photo-preview','ev-photo-placeholder','ev-photo-data')">
+        <button id="ev-photo-dl-btn" type="button" style="display:none;margin-top:8px;width:100%;padding:8px;background:#f0f4f0;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;"
+                onclick="downloadVehiclePhoto(document.getElementById('ev-id').value)">⬇ Télécharger la photo</button>
+      </div>
       <div class="form-grid">
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Nom / Identifiant</label>
@@ -2319,7 +2341,10 @@ function vehicleCard(v) {
     const kmSpan = pleins[pleins.length-1].km - pleins[0].km;
     if (kmSpan > 0) avgConso = (totalL / kmSpan) * 100;
   }
+  const photoStyle = v.photo ? `background-image:url('${v.photo}')` : '';
+  const photoContent = v.photo ? '' : (VEHICLE_ICONS[v.type]||'🚗');
   return `<div class="vehicle-card${selectedVehicleId===v.id?' selected':''}" onclick="selectVehicle('${v.id}')">
+    <div class="card-photo" style="${photoStyle}">${photoContent}</div>
     <div class="vehicle-card-header">
       <div>
         <div class="vehicle-name">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name}</div>
@@ -2404,6 +2429,10 @@ function openAddVehicle() {
   document.getElementById('nv-plate').value = '';
   document.getElementById('nv-year').value = new Date().getFullYear();
   document.getElementById('nv-km').value = '';
+  document.getElementById('nv-photo-data').value = '';
+  document.getElementById('nv-photo-input').value = '';
+  document.getElementById('nv-photo-preview').style.display = 'none';
+  document.getElementById('nv-photo-placeholder').style.display = 'block';
   openModal('modal-add-vehicle');
 }
 
@@ -2416,7 +2445,8 @@ function saveVehicle() {
     type: document.getElementById('nv-type').value,
     plate: document.getElementById('nv-plate').value.trim().toUpperCase(),
     year: parseInt(document.getElementById('nv-year').value) || new Date().getFullYear(),
-    km: parseInt(document.getElementById('nv-km').value) || 0
+    km: parseInt(document.getElementById('nv-km').value) || 0,
+    photo: document.getElementById('nv-photo-data').value || null
   });
   saveDB();
   closeModal('modal-add-vehicle');
@@ -2433,6 +2463,18 @@ function openEditVehicle(e, id) {
   document.getElementById('ev-plate').value = v.plate || '';
   document.getElementById('ev-year').value = v.year;
   document.getElementById('ev-km').value = v.km;
+  document.getElementById('ev-photo-input').value = '';
+  document.getElementById('ev-photo-data').value = v.photo || '';
+  if (v.photo) {
+    document.getElementById('ev-photo-preview').src = v.photo;
+    document.getElementById('ev-photo-preview').style.display = 'block';
+    document.getElementById('ev-photo-placeholder').style.display = 'none';
+    document.getElementById('ev-photo-dl-btn').style.display = 'block';
+  } else {
+    document.getElementById('ev-photo-preview').style.display = 'none';
+    document.getElementById('ev-photo-placeholder').style.display = 'block';
+    document.getElementById('ev-photo-dl-btn').style.display = 'none';
+  }
   openModal('modal-edit-vehicle');
 }
 
@@ -2444,9 +2486,20 @@ function saveEditVehicle() {
   v.plate = document.getElementById('ev-plate').value.trim().toUpperCase();
   v.year = parseInt(document.getElementById('ev-year').value) || v.year;
   v.km = parseInt(document.getElementById('ev-km').value) || v.km;
+  const newPhoto = document.getElementById('ev-photo-data').value;
+  if (newPhoto) v.photo = newPhoto;
   saveDB();
   closeModal('modal-edit-vehicle');
   renderVehicles();
+}
+
+function downloadVehiclePhoto(id) {
+  const v = DB.vehicles.find(x => x.id === id);
+  if (!v || !v.photo) return;
+  const a = document.createElement('a');
+  a.href = v.photo;
+  a.download = (v.name || 'vehicule').replace(/\s+/g, '_') + '.jpg';
+  a.click();
 }
 
 function deleteVehicle(e, id) {
