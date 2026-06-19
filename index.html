@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi Matériel — Entretien</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #f4f6f3;
+    --surface: #ffffff;
+    --surface2: #edf0eb;
+    --border: #d0daca;
+    --accent: #2e7d32;
+    --accent2: #558b2f;
+    --warn: #e65100;
+    --danger: #c62828;
+    --text: #2d3d2e;
+    --text-dim: #7a927c;
+    --text-bright: #1a271b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+  .nav-tabs {
+    display: flex;
+    gap: 0;
+  }
+  .nav-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-right: none;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .nav-tab:first-child { border-radius: 4px 0 0 4px; }
+  .nav-tab:last-child { border-radius: 0 4px 4px 0; border-right: 1px solid var(--border); }
+  .nav-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .nav-tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+  /* MAIN */
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* FLEET GRID */
+  .fleet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 7px 16px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: var(--accent); color: var(--bg); }
+  .btn-danger { border-color: var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-warn { border-color: var(--warn); color: var(--warn); }
+  .btn-warn:hover { background: var(--warn); color: var(--bg); }
+  .btn-sm { padding: 4px 10px; font-size: 10px; }
+
+  .fleet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .tractor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    cursor: pointer;
+  }
+  .tractor-card:hover { border-color: var(--accent); }
+  .tractor-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .card-header {
+    background: var(--surface2);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-bright);
+  }
+  .card-model {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.danger { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+  .card-body { padding: 14px 16px; }
+
+  .stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-bright);
+    font-weight: 600;
+  }
+  .stat-value.warn { color: var(--warn); }
+  .stat-value.danger { color: var(--danger); }
+  .stat-value.ok { color: var(--accent); }
+
+  .card-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+
+  /* DETAIL PANEL */
+  .detail-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .panel-tab {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 10px 18px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .panel-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .panel-tab:hover:not(.active) { color: var(--text); }
+
+  .panel-content { padding: 20px; }
+  .panel-section { display: none; }
+  .panel-section.active { display: block; }
+
+  /* FORMS */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .form-input {
+    background: #f9faf8;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-bright);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 10px;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .form-input option { background: var(--bg); }
+
+  /* MAINTENANCE TABLE */
+  .maint-table { width: 100%; border-collapse: collapse; }
+  .maint-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .maint-table td {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .maint-table tr:last-child td { border-bottom: none; }
+  .maint-table tr:hover td { background: var(--surface2); }
+
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .badge-ok { background: rgba(46,125,50,0.1); color: var(--accent); border: 1px solid rgba(46,125,50,0.3); }
+  .badge-warn { background: rgba(230,81,0,0.1); color: var(--warn); border: 1px solid rgba(230,81,0,0.3); }
+  .badge-danger { background: rgba(198,40,40,0.1); color: var(--danger); border: 1px solid rgba(198,40,40,0.3); }
+  .badge-info { background: rgba(21,101,192,0.1); color: #1565c0; border: 1px solid rgba(21,101,192,0.3); }
+
+  .progress-bar {
+    background: var(--border);
+    border-radius: 2px;
+    height: 4px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .progress-ok { background: var(--accent); }
+  .progress-warn { background: var(--warn); }
+  .progress-danger { background: var(--danger); }
+
+  /* PLAN ENTRETIEN */
+  .plan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 600px) { .plan-grid { grid-template-columns: 1fr; } }
+
+  .plan-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 14px;
+  }
+  .plan-block-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .plan-block-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .plan-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .plan-item:last-child { border-bottom: none; }
+  .plan-item-label { color: var(--text); }
+  .plan-item-value {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+  }
+
+  /* LOG ENTRIES */
+  .log-entry {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .log-date {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 80px;
+  }
+  .log-hours {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    min-width: 65px;
+  }
+  .log-desc {
+    font-size: 12px;
+    color: var(--text);
+    flex: 1;
+  }
+  .log-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(30,40,30,0.5);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .modal-close:hover { color: var(--danger); }
+  .modal-body { padding: 20px; }
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+  textarea.form-input { resize: vertical; min-height: 70px; }
+
+  .h-divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 500px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* TRAVAUX PICKER */
+  .travaux-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+  .travaux-btn {
+    display: flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 11px;
+    padding: 6px 12px; border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg); color: var(--text);
+    cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .travaux-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(46,125,50,0.06); }
+  .travaux-btn.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* CONTEXT MENU */
+  .card-menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+  }
+  .card-menu-btn:hover { background: var(--surface2); color: var(--text-bright); }
+  .card-menu-wrap { position: relative; }
+  .ctx-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.13);
+    z-index: 500;
+    min-width: 160px;
+    overflow: hidden;
+  }
+  .ctx-menu.open { display: block; }
+  .ctx-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    letter-spacing: 0.05em;
+    transition: background 0.1s;
+  }
+  .ctx-menu-item:hover { background: var(--surface2); }
+  .ctx-menu-item.danger { color: var(--danger); }
+  .ctx-menu-item.danger:hover { background: rgba(198,40,40,0.08); }
+  .ctx-menu-divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+  /* HEADER RIGHT */
+  .header-actions { display: flex; gap: 6px; margin-left: 12px; }
+  @media (max-width: 680px) {
+    .nav-tabs .nav-tab { padding: 6px 10px; font-size: 10px; }
+    .header-actions { margin-left: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Suivi Matériel<span> // Flotte</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('flotte')">Flotte</button>
+    <button class="nav-tab" onclick="showPage('alertes')">Alertes</button>
+    <button class="nav-tab" onclick="showPage('historique')">Historique</button>
+    <button class="nav-tab" onclick="showPage('recap')">Récap GNR</button>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
+    <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">
+      📂 Import
+      <input type="file" accept=".json" onchange="importData(event)" style="display:none;">
+    </label>
+  </div>
+</header>
+
+<main>
+
+  <!-- PAGE FLOTTE -->
+  <div class="page active" id="page-flotte">
+    <div class="fleet-header">
+      <div class="section-title">Parc de machines</div>
+      <button class="btn" onclick="openAddTractor()">+ Ajouter</button>
+    </div>
+    <div class="fleet-grid" id="fleet-grid"></div>
+    <div id="detail-panel-container"></div>
+  </div>
+
+  <!-- PAGE ALERTES -->
+  <div class="page" id="page-alertes">
+    <div class="fleet-header">
+      <div class="section-title">Alertes d'entretien</div>
+    </div>
+    <div id="alerts-list"></div>
+  </div>
+
+  <!-- PAGE HISTORIQUE -->
+  <div class="page" id="page-historique">
+    <div class="fleet-header">
+      <div class="section-title">Historique global</div>
+    </div>
+    <div id="historique-list"></div>
+  </div>
+
+  <!-- PAGE RÉCAP GNR -->
+  <div class="page" id="page-recap">
+    <div class="fleet-header">
+      <div class="section-title">Récapitulatif GNR par travaux — Parc complet</div>
+    </div>
+    <div id="recap-list"></div>
+  </div>
+
+</main>
+
+<!-- MODAL AJOUT / EDIT TRACTEUR -->
+<div class="modal-overlay" id="modal-add-tractor">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="add-tractor-title">Nouveau tracteur</div>
+      <button class="modal-close" onclick="closeModal('modal-add-tractor')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-tractor-id">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column: 1/-1;">
+          <label class="form-label">Nom / Identifiant</label>
+          <input class="form-input" id="new-name" placeholder="ex: Claas Principal">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modèle</label>
+          <select class="form-input" id="new-model" onchange="onModelSelect()">
+            <option value="">-- Choisir un modèle --</option>
+            <option value="claas-arion-430">Claas Arion 430 (2019)</option>
+            <option value="merlo-mf409">Merlo Multifarmer 40.9 (2020)</option>
+            <option value="reform-h95pro">Reform H95 Pro (2019)</option>
+            <option value="custom">Autre (personnalisé)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Année</label>
+          <input class="form-input" id="new-year" type="number" min="1990" max="2030">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Heures actuelles (h)</label>
+          <input class="form-input" id="new-hours" type="number" placeholder="0" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prochain service à (h)</label>
+          <input class="form-input" id="new-next-service" type="number" placeholder="auto" min="0">
+        </div>
+      </div>
+      <div id="custom-plan-fields">
+        <div class="h-divider"></div>
+        <div class="form-label" style="margin-bottom:10px;">Plan d'entretien (intervalles en heures)</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Vidange moteur (h)</label>
+            <input class="form-input" id="cp-vidange" type="number" value="500">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Filtre hydraulique (h)</label>
+            <input class="form-input" id="cp-hydraulique" type="number" value="1000">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Graissage (h)</label>
+            <input class="form-input" id="cp-graissage" type="number" value="50">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Filtre à air (h)</label>
+            <input class="form-input" id="cp-air" type="number" value="500">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-add-tractor')">Annuler</button>
+      <button class="btn" onclick="saveTractor()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL OPÉRATION (Entretien ou Plein GNR) -->
+<div class="modal-overlay" id="modal-operation">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-op-title">Saisir opération</div>
+      <button class="modal-close" onclick="closeModal('modal-operation')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="two-col">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" id="op-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Compteur (h)</label>
+          <input class="form-input" id="op-hours" type="number" min="0">
+        </div>
+      </div>
+
+      <!-- Champs Entretien -->
+      <div id="op-maint-section">
+        <div class="h-divider"></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Type d'entretien</label>
+            <select class="form-input" id="op-type">
+              <option value="vidange">Vidange moteur</option>
+              <option value="hydraulique">Filtre hydraulique</option>
+              <option value="graissage">Graissage</option>
+              <option value="air">Filtre à air</option>
+              <option value="autre">Autre</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Coût (€)</label>
+            <input class="form-input" id="op-cost" type="number" min="0" step="0.01" placeholder="0">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Description / Pièces</label>
+            <textarea class="form-input" id="op-desc" placeholder="Filtre huile remplacé, joint vidange..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Technicien</label>
+            <input class="form-input" id="op-tech" placeholder="Optionnel">
+          </div>
+        </div>
+      </div>
+
+      <!-- Champs Plein GNR -->
+      <div id="op-fuel-section" style="display:none">
+        <div class="h-divider"></div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Litres</label>
+            <input class="form-input" id="fuel-liters" type="number" min="0" step="0.1" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Prix / L (€)</label>
+            <input class="form-input" id="fuel-price" type="number" min="0" step="0.001" value="1.10">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Travaux effectués</label>
+            <div class="travaux-picker" id="travaux-picker"></div>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Notes</label>
+            <textarea class="form-input" id="fuel-notes" placeholder="Optionnel"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-operation')">Annuler</button>
+      <button class="btn" onclick="saveOperation()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MISE À JOUR HEURES -->
+<div class="modal-overlay" id="modal-hours">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <div class="modal-title">Mettre à jour le compteur</div>
+      <button class="modal-close" onclick="closeModal('modal-hours')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Heures actuelles (h)</label>
+        <input class="form-input" id="hours-value" type="number" min="0">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-hours')">Annuler</button>
+      <button class="btn" onclick="saveHours()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== CONSTANTS =====================
+
+const MODEL_PLANS = {
+  'claas-arion-430': { label: 'Claas Arion 430', year: 2019, plan: { vidange: 500, hydraulique: 1000, graissage: 50, air: 500 } },
+  'merlo-mf409':     { label: 'Merlo Multifarmer 40.9', year: 2020, plan: { vidange: 500, hydraulique: 1000, graissage: 100, air: 500 } },
+  'reform-h95pro':   { label: 'Reform H95 Pro', year: 2019, plan: { vidange: 250, hydraulique: 500, graissage: 50, air: 250 } },
+};
+
+const MAINT_TYPES = [
+  { id: 'vidange',     label: 'Vidange moteur' },
+  { id: 'hydraulique', label: 'Filtre hydraulique' },
+  { id: 'graissage',   label: 'Graissage' },
+  { id: 'air',         label: 'Filtre à air' },
+  { id: 'autre',       label: 'Autre' },
+];
+
+const TRAVAUX = [
+  { id: 'fauche',    label: 'Fauche' },
+  { id: 'fenaison',  label: 'Fenaison' },
+  { id: 'ensilage',  label: 'Ensilage' },
+  { id: 'epandage',  label: 'Épandage' },
+  { id: 'labour',    label: 'Labour' },
+  { id: 'transport', label: 'Transport' },
+  { id: 'autre',     label: 'Autre' },
+];
+
+// ===================== STATE =====================
+
+let tractors = [];
+let selectedId = null;
+let panelTab = 'etat';
+let opState = { tractorId: null, mode: null };
+let hoursState = { tractorId: null };
+let selectedTravaux = [];
+
+// ===================== PERSISTENCE =====================
+
+function save() {
+  localStorage.setItem('suivi-materiel-v1', JSON.stringify(tractors));
+}
+
+function load() {
+  try {
+    const d = localStorage.getItem('suivi-materiel-v1');
+    if (d) tractors = JSON.parse(d);
+  } catch(e) { tractors = []; }
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// ===================== UTILITIES =====================
+
+function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function fmtDate(str) {
+  if (!str) return '—';
+  const [y, m, d] = str.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function fmtNum(n, dec = 0) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toLocaleString('fr', { maximumFractionDigits: dec, minimumFractionDigits: dec });
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ===================== COMPUTED =====================
+
+function getMaintStatus(t, type) {
+  const interval = (t.plan || {})[type] || 500;
+  const lastAt = (t.lastService || {})[type] || 0;
+  const done = (t.hours || 0) - lastAt;
+  const pct = done / interval;
+  const remaining = Math.max(0, interval - done);
+  let status = 'ok';
+  if (done >= interval) status = 'danger';
+  else if (done >= interval * 0.8) status = 'warn';
+  return { done, interval, pct: Math.min(pct, 1), remaining, status };
+}
+
+function getOverallStatus(t) {
+  let worst = 'ok';
+  for (const type of ['vidange', 'hydraulique', 'graissage', 'air']) {
+    const s = getMaintStatus(t, type).status;
+    if (s === 'danger') return 'danger';
+    if (s === 'warn') worst = 'warn';
+  }
+  return worst;
+}
+
+function getTotalFuel(t) {
+  return (t.fuelLogs || []).reduce((s, l) => s + (l.liters || 0), 0);
+}
+
+function getFuelCost(t) {
+  return (t.fuelLogs || []).reduce((s, l) => s + (l.liters || 0) * (l.pricePerL || 0), 0);
+}
+
+function getMaintCost(t) {
+  return (t.maintenanceLogs || []).reduce((s, l) => s + (l.cost || 0), 0);
+}
+
+function getMinRemaining(t) {
+  let min = Infinity;
+  for (const type of ['vidange', 'hydraulique', 'graissage', 'air']) {
+    const s = getMaintStatus(t, type);
+    if (s.remaining < min) min = s.remaining;
+  }
+  return min === Infinity ? 0 : min;
+}
+
+// ===================== NAVIGATION =====================
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const map = { flotte: 0, alertes: 1, historique: 2, recap: 3 };
+  const tabs = document.querySelectorAll('.nav-tab');
+  if (tabs[map[name]]) tabs[map[name]].classList.add('active');
+  if (name === 'alertes') renderAlerts();
+  if (name === 'historique') renderHistorique();
+  if (name === 'recap') renderRecap();
+}
+
+// ===================== CONTEXT MENU =====================
+
+function toggleMenu(event, menuId) {
+  event.stopPropagation();
+  const menu = document.getElementById(menuId);
+  const wasOpen = menu.classList.contains('open');
+  closeAllMenus();
+  if (!wasOpen) menu.classList.add('open');
+}
+
+function closeAllMenus() {
+  document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+}
+
+document.addEventListener('click', closeAllMenus);
+
+// ===================== SELECTION & PANEL =====================
+
+function selectTractor(id) {
+  if (selectedId === id) {
+    selectedId = null;
+  } else {
+    selectedId = id;
+    panelTab = 'etat';
+  }
+  renderFleet();
+}
+
+function switchPanelTab(tab) {
+  panelTab = tab;
+  renderDetailPanel();
+}
+
+// ===================== FLEET RENDERING =====================
+
+function renderFleet() {
+  const grid = document.getElementById('fleet-grid');
+  if (!tractors.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="icon">🚜</div>
+      <div>Aucun tracteur enregistré.<br>Cliquez sur <strong>+ Ajouter</strong> pour commencer.</div>
+    </div>`;
+    document.getElementById('detail-panel-container').innerHTML = '';
+    return;
+  }
+  grid.innerHTML = tractors.map(t => renderCard(t)).join('');
+  renderDetailPanel();
+}
+
+function renderCard(t) {
+  const status = getOverallStatus(t);
+  const dotClass = status === 'ok' ? '' : status;
+  const sel = t.id === selectedId ? 'selected' : '';
+
+  const urgentTypes = ['vidange', 'hydraulique', 'graissage', 'air'];
+  let lowestRemaining = Infinity, urgentType = null, urgentStatus = null;
+  for (const type of urgentTypes) {
+    const s = getMaintStatus(t, type);
+    if (s.remaining < lowestRemaining) {
+      lowestRemaining = s.remaining;
+      urgentType = type;
+      urgentStatus = s.status;
+    }
+  }
+  const urgentLabel = urgentType ? (MAINT_TYPES.find(m => m.id === urgentType)?.label || urgentType) : '—';
+  const urgentClass = urgentStatus === 'danger' ? 'danger' : urgentStatus === 'warn' ? 'warn' : 'ok';
+
+  const nextService = t.nextService || (t.hours + lowestRemaining);
+  const hoursToNext = Math.max(0, nextService - t.hours);
+  const nextClass = hoursToNext <= 0 ? 'danger' : hoursToNext <= 25 ? 'warn' : 'ok';
+
+  const totalFuel = getTotalFuel(t);
+
+  return `<div class="tractor-card ${sel}" onclick="selectTractor('${t.id}')">
+    <div class="card-header">
+      <div>
+        <div class="card-name">${esc(t.name)}</div>
+        <div class="card-model">${esc(t.modelLabel || '')}${t.year ? ' · ' + t.year : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="status-dot ${dotClass}"></div>
+        <div class="card-menu-wrap">
+          <button class="card-menu-btn" onclick="toggleMenu(event,'menu-${t.id}')">⋮</button>
+          <div class="ctx-menu" id="menu-${t.id}">
+            <button class="ctx-menu-item" onclick="event.stopPropagation();openEditTractor('${t.id}')">✏️ Modifier</button>
+            <button class="ctx-menu-item" onclick="event.stopPropagation();openOperation('${t.id}','maintenance')">🔧 Entretien</button>
+            <button class="ctx-menu-item" onclick="event.stopPropagation();openOperation('${t.id}','plein')">⛽ Plein GNR</button>
+            <button class="ctx-menu-item" onclick="event.stopPropagation();openUpdateHours('${t.id}')">📊 Heures</button>
+            <div class="ctx-menu-divider"></div>
+            <button class="ctx-menu-item danger" onclick="event.stopPropagation();deleteTractor('${t.id}')">🗑️ Supprimer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="stat-row">
+        <span class="stat-label">Compteur</span>
+        <span class="stat-value">${fmtNum(t.hours)} h</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Prochain entretien</span>
+        <span class="stat-value ${nextClass}">${hoursToNext <= 0 ? 'DÉPASSÉ' : '−' + fmtNum(hoursToNext) + ' h'}</span>
+      </div>
+      ${urgentType ? `<div class="stat-row">
+        <span class="stat-label">${esc(urgentLabel)}</span>
+        <span class="stat-value ${urgentClass}">${lowestRemaining <= 0 ? 'DÉPASSÉ' : fmtNum(lowestRemaining) + ' h restants'}</span>
+      </div>` : ''}
+      <div class="stat-row">
+        <span class="stat-label">GNR total</span>
+        <span class="stat-value">${fmtNum(totalFuel, 1)} L</span>
+      </div>
+    </div>
+    <div class="card-footer">
+      <button class="btn btn-sm" onclick="event.stopPropagation();openOperation('${t.id}','maintenance')">🔧 Entretien</button>
+      <button class="btn btn-sm" onclick="event.stopPropagation();openOperation('${t.id}','plein')">⛽ Plein</button>
+      <button class="btn btn-sm" onclick="event.stopPropagation();openUpdateHours('${t.id}')">📊 Heures</button>
+    </div>
+  </div>`;
+}
+
+// ===================== DETAIL PANEL =====================
+
+function renderDetailPanel() {
+  const container = document.getElementById('detail-panel-container');
+  if (!selectedId) { container.innerHTML = ''; return; }
+  const t = tractors.find(x => x.id === selectedId);
+  if (!t) { container.innerHTML = ''; return; }
+
+  const tabs = [
+    { id: 'etat', label: 'État' },
+    { id: 'entretien', label: 'Entretien' },
+    { id: 'carburant', label: 'Carburant' },
+    { id: 'plan', label: 'Plan' },
+  ];
+
+  const tabsHtml = tabs.map(tab =>
+    `<button class="panel-tab ${panelTab === tab.id ? 'active' : ''}" onclick="switchPanelTab('${tab.id}')">${tab.label}</button>`
+  ).join('');
+
+  let contentHtml = '';
+  if (panelTab === 'etat') contentHtml = renderEtatPanel(t);
+  else if (panelTab === 'entretien') contentHtml = renderEntretienPanel(t);
+  else if (panelTab === 'carburant') contentHtml = renderCarburantPanel(t);
+  else if (panelTab === 'plan') contentHtml = renderPlanPanel(t);
+
+  container.innerHTML = `<div class="detail-panel">
+    <div class="panel-tabs">${tabsHtml}</div>
+    <div class="panel-content">${contentHtml}</div>
+  </div>`;
+}
+
+function renderEtatPanel(t) {
+  const types = ['vidange', 'hydraulique', 'graissage', 'air'];
+  const rows = types.map(type => {
+    const s = getMaintStatus(t, type);
+    const label = MAINT_TYPES.find(m => m.id === type)?.label || type;
+    const pctDisplay = Math.round(s.pct * 100);
+    const progressClass = s.status === 'danger' ? 'progress-danger' : s.status === 'warn' ? 'progress-warn' : 'progress-ok';
+    const remainCell = s.remaining <= 0
+      ? `<span class="badge badge-danger">DÉPASSÉ</span>`
+      : `${fmtNum(s.remaining)} h`;
+    return `<tr>
+      <td>${esc(label)}</td>
+      <td style="min-width:100px">
+        <div class="progress-bar"><div class="progress-fill ${progressClass}" style="width:${pctDisplay}%"></div></div>
+      </td>
+      <td style="white-space:nowrap">${fmtNum(s.done)} / ${fmtNum(s.interval)} h</td>
+      <td style="white-space:nowrap">${remainCell}</td>
+      <td><span class="badge badge-${s.status}">${s.status === 'ok' ? 'OK' : s.status === 'warn' ? 'BIENTÔT' : 'URGENT'}</span></td>
+    </tr>`;
+  }).join('');
+
+  const totalFuel = getTotalFuel(t);
+  const fuelCost = getFuelCost(t);
+  const maintCost = getMaintCost(t);
+
+  return `<table class="maint-table" style="margin-bottom:20px">
+    <thead>
+      <tr>
+        <th>Entretien</th>
+        <th>Progression</th>
+        <th>Fait / Intervalle</th>
+        <th>Restant</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="plan-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="plan-block">
+      <div class="plan-block-title">GNR</div>
+      <div class="plan-item"><span class="plan-item-label">Total consommé</span><span class="plan-item-value">${fmtNum(totalFuel, 1)} L</span></div>
+      <div class="plan-item"><span class="plan-item-label">Coût GNR</span><span class="plan-item-value">${fmtNum(fuelCost, 2)} €</span></div>
+      <div class="plan-item"><span class="plan-item-label">Nb pleins</span><span class="plan-item-value">${(t.fuelLogs || []).length}</span></div>
+    </div>
+    <div class="plan-block">
+      <div class="plan-block-title">Entretiens</div>
+      <div class="plan-item"><span class="plan-item-label">Opérations</span><span class="plan-item-value">${(t.maintenanceLogs || []).length}</span></div>
+      <div class="plan-item"><span class="plan-item-label">Coût total</span><span class="plan-item-value">${fmtNum(maintCost, 2)} €</span></div>
+    </div>
+    <div class="plan-block">
+      <div class="plan-block-title">Machine</div>
+      <div class="plan-item"><span class="plan-item-label">Compteur</span><span class="plan-item-value">${fmtNum(t.hours)} h</span></div>
+      <div class="plan-item"><span class="plan-item-label">Année</span><span class="plan-item-value">${t.year || '—'}</span></div>
+      <div class="plan-item"><span class="plan-item-label">Modèle</span><span class="plan-item-value">${esc(t.modelLabel || '—')}</span></div>
+    </div>
+  </div>`;
+}
+
+function renderEntretienPanel(t) {
+  const logs = [...(t.maintenanceLogs || [])].sort((a, b) => b.date.localeCompare(a.date));
+  if (!logs.length) {
+    return `<div class="empty-state">
+      <div class="icon">🔧</div>Aucun entretien enregistré.
+      <br><button class="btn btn-sm" style="margin-top:12px" onclick="openOperation('${t.id}','maintenance')">+ Saisir entretien</button>
+    </div>`;
+  }
+
+  const rows = logs.map(l => {
+    const mtype = MAINT_TYPES.find(m => m.id === l.type);
+    const badgeClass = l.type === 'vidange' ? 'badge-info' : l.type === 'hydraulique' ? 'badge-warn' : l.type === 'graissage' ? 'badge-ok' : 'badge-info';
+    return `<tr>
+      <td>${fmtDate(l.date)}</td>
+      <td>${fmtNum(l.hours)} h</td>
+      <td><span class="badge ${badgeClass}">${esc(mtype?.label || l.type)}</span></td>
+      <td>${esc(l.description || '—')}</td>
+      <td>${l.cost ? fmtNum(l.cost, 2) + ' €' : '—'}</td>
+      <td>${esc(l.tech || '—')}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteMaintLog('${t.id}','${l.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  return `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn btn-sm" onclick="openOperation('${t.id}','maintenance')">+ Entretien</button>
+  </div>
+  <table class="maint-table">
+    <thead><tr><th>Date</th><th>Compteur</th><th>Type</th><th>Description</th><th>Coût</th><th>Tech.</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderCarburantPanel(t) {
+  const logs = [...(t.fuelLogs || [])].sort((a, b) => b.date.localeCompare(a.date));
+  if (!logs.length) {
+    return `<div class="empty-state">
+      <div class="icon">⛽</div>Aucun plein enregistré.
+      <br><button class="btn btn-sm" style="margin-top:12px" onclick="openOperation('${t.id}','plein')">+ Saisir plein</button>
+    </div>`;
+  }
+
+  const entries = logs.map(l => {
+    const travaux = (l.travaux || []).map(tid => TRAVAUX.find(x => x.id === tid)?.label || tid);
+    const cost = (l.liters || 0) * (l.pricePerL || 0);
+    return `<div class="log-entry">
+      <span class="log-date">${fmtDate(l.date)}</span>
+      <span class="log-hours">${fmtNum(l.hours)} h</span>
+      <span class="log-desc">
+        <strong>${fmtNum(l.liters, 1)} L</strong>
+        ${l.pricePerL ? `@ ${fmtNum(l.pricePerL, 3)} €/L` : ''}
+        ${cost > 0 ? ` = <strong>${fmtNum(cost, 2)} €</strong>` : ''}
+        ${l.notes ? `<br><span style="color:var(--text-dim);font-size:11px">${esc(l.notes)}</span>` : ''}
+      </span>
+      <div class="log-meta">
+        ${travaux.map(tw => `<span class="badge badge-info">${esc(tw)}</span>`).join('')}
+        <button class="btn btn-sm btn-danger" onclick="deleteFuelLog('${t.id}','${l.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const total = getTotalFuel(t);
+  const totalCost = getFuelCost(t);
+
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">
+      Total: <strong>${fmtNum(total, 1)} L</strong> — ${fmtNum(totalCost, 2)} €
+    </div>
+    <button class="btn btn-sm" onclick="openOperation('${t.id}','plein')">+ Plein</button>
+  </div>
+  ${entries}`;
+}
+
+function renderPlanPanel(t) {
+  const types = ['vidange', 'hydraulique', 'graissage', 'air'];
+  const items = types.map(type => {
+    const label = MAINT_TYPES.find(m => m.id === type)?.label || type;
+    const interval = (t.plan || {})[type] || '—';
+    const lastAt = (t.lastService || {})[type];
+    return `<div class="plan-item">
+      <span class="plan-item-label">${esc(label)}</span>
+      <span class="plan-item-value">Tous les ${interval} h${lastAt ? ' · Dernière: ' + lastAt + ' h' : ''}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="plan-block" style="margin-bottom:16px">
+    <div class="plan-block-title">Intervalles d'entretien</div>
+    ${items}
+  </div>
+  <div style="display:flex;justify-content:flex-end">
+    <button class="btn btn-sm" onclick="openEditTractor('${t.id}')">✏️ Modifier le plan</button>
+  </div>`;
+}
+
+// ===================== ALERTS PAGE =====================
+
+function renderAlerts() {
+  const list = document.getElementById('alerts-list');
+  const items = [];
+
+  for (const t of tractors) {
+    for (const type of ['vidange', 'hydraulique', 'graissage', 'air']) {
+      const s = getMaintStatus(t, type);
+      if (s.status !== 'ok') {
+        const label = MAINT_TYPES.find(m => m.id === type)?.label || type;
+        items.push({ tractor: t, type, label, ...s });
+      }
+    }
+  }
+
+  if (!items.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">✅</div>Aucune alerte — tout est à jour !</div>`;
+    return;
+  }
+
+  items.sort((a, b) => {
+    if (a.status === 'danger' && b.status !== 'danger') return -1;
+    if (b.status === 'danger' && a.status !== 'danger') return 1;
+    return a.remaining - b.remaining;
+  });
+
+  list.innerHTML = items.map(item => `
+    <div class="log-entry" style="border-left:3px solid var(--${item.status === 'danger' ? 'danger' : 'warn'})">
+      <span class="log-hours" style="color:var(--${item.status === 'danger' ? 'danger' : 'warn'});min-width:70px">${item.status === 'danger' ? 'URGENT' : 'BIENTÔT'}</span>
+      <span class="log-desc">
+        <strong>${esc(item.tractor.name)}</strong> — ${esc(item.label)}<br>
+        <span style="font-size:11px;color:var(--text-dim)">
+          ${item.remaining <= 0 ? 'Dépassé de ' + fmtNum(Math.abs(item.done - item.interval)) + ' h' : fmtNum(item.remaining) + ' h restants'}
+          · Compteur: ${fmtNum(item.tractor.hours)} h · Intervalle: ${fmtNum(item.interval)} h
+        </span>
+      </span>
+      <div class="log-meta">
+        <span class="badge badge-${item.status}">${fmtNum(item.done)}/${fmtNum(item.interval)} h</span>
+        <button class="btn btn-sm" onclick="openOperation('${item.tractor.id}','maintenance')">🔧 Saisir</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===================== HISTORIQUE PAGE =====================
+
+function renderHistorique() {
+  const list = document.getElementById('historique-list');
+  const allLogs = [];
+
+  for (const t of tractors) {
+    for (const l of (t.maintenanceLogs || [])) {
+      allLogs.push({ ...l, tractorName: t.name, tractorId: t.id, kind: 'maint' });
+    }
+    for (const l of (t.fuelLogs || [])) {
+      allLogs.push({ ...l, tractorName: t.name, tractorId: t.id, kind: 'fuel' });
+    }
+  }
+
+  allLogs.sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!allLogs.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">📋</div>Aucune opération enregistrée.</div>`;
+    return;
+  }
+
+  list.innerHTML = allLogs.map(l => {
+    if (l.kind === 'maint') {
+      const label = MAINT_TYPES.find(m => m.id === l.type)?.label || l.type;
+      return `<div class="log-entry">
+        <span class="log-date">${fmtDate(l.date)}</span>
+        <span class="log-hours">${fmtNum(l.hours)} h</span>
+        <span class="log-desc">
+          <strong>${esc(l.tractorName)}</strong> — ${esc(label)}
+          ${l.description ? `<br><span style="color:var(--text-dim);font-size:11px">${esc(l.description)}</span>` : ''}
+        </span>
+        <div class="log-meta">
+          <span class="badge badge-info">Entretien</span>
+          ${l.cost ? `<span class="badge badge-ok">${fmtNum(l.cost, 2)} €</span>` : ''}
+        </div>
+      </div>`;
+    } else {
+      const travaux = (l.travaux || []).map(tid => TRAVAUX.find(x => x.id === tid)?.label || tid);
+      const cost = (l.liters || 0) * (l.pricePerL || 0);
+      return `<div class="log-entry">
+        <span class="log-date">${fmtDate(l.date)}</span>
+        <span class="log-hours">${fmtNum(l.hours)} h</span>
+        <span class="log-desc">
+          <strong>${esc(l.tractorName)}</strong> — ${fmtNum(l.liters, 1)} L GNR
+          ${cost > 0 ? ` (${fmtNum(cost, 2)} €)` : ''}
+          ${l.notes ? `<br><span style="color:var(--text-dim);font-size:11px">${esc(l.notes)}</span>` : ''}
+        </span>
+        <div class="log-meta">
+          <span class="badge badge-warn">GNR</span>
+          ${travaux.map(tw => `<span class="badge badge-ok">${esc(tw)}</span>`).join('')}
+        </div>
+      </div>`;
+    }
+  }).join('');
+}
+
+// ===================== RECAP GNR PAGE =====================
+
+function renderRecap() {
+  const list = document.getElementById('recap-list');
+  const byTravaux = {};
+
+  for (const t of tractors) {
+    for (const l of (t.fuelLogs || [])) {
+      const trav = (l.travaux || []).length > 0 ? l.travaux : ['autre'];
+      for (const tid of trav) {
+        if (!byTravaux[tid]) byTravaux[tid] = { liters: 0, cost: 0, fills: 0, machines: new Set() };
+        byTravaux[tid].liters += l.liters || 0;
+        byTravaux[tid].cost += (l.liters || 0) * (l.pricePerL || 0);
+        byTravaux[tid].fills++;
+        byTravaux[tid].machines.add(t.name);
+      }
+    }
+  }
+
+  const keys = Object.keys(byTravaux);
+  if (!keys.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">⛽</div>Aucun plein GNR enregistré.</div>`;
+    return;
+  }
+
+  const totalLiters = Object.values(byTravaux).reduce((s, v) => s + v.liters, 0);
+  keys.sort((a, b) => byTravaux[b].liters - byTravaux[a].liters);
+
+  list.innerHTML = `<div class="plan-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">` +
+    keys.map(tid => {
+      const v = byTravaux[tid];
+      const label = TRAVAUX.find(x => x.id === tid)?.label || tid;
+      const pct = totalLiters > 0 ? v.liters / totalLiters * 100 : 0;
+      return `<div class="plan-block">
+        <div class="plan-block-title">${esc(label)}</div>
+        <div class="plan-item"><span class="plan-item-label">Litres total</span><span class="plan-item-value">${fmtNum(v.liters, 1)} L</span></div>
+        <div class="plan-item"><span class="plan-item-label">Part du parc</span><span class="plan-item-value">${fmtNum(pct, 1)} %</span></div>
+        <div class="plan-item"><span class="plan-item-label">Coût estimé</span><span class="plan-item-value">${fmtNum(v.cost, 2)} €</span></div>
+        <div class="plan-item"><span class="plan-item-label">Nb pleins</span><span class="plan-item-value">${v.fills}</span></div>
+        <div class="plan-item"><span class="plan-item-label">Machines</span><span class="plan-item-value" style="font-size:10px;text-align:right">${[...v.machines].map(esc).join(', ')}</span></div>
+        <div style="margin-top:10px">
+          <div class="progress-bar" style="height:6px">
+            <div class="progress-fill progress-ok" style="width:${pct.toFixed(1)}%"></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('') + `</div>
+    <div style="margin-top:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:right">
+      Total parc: <strong>${fmtNum(totalLiters, 1)} L</strong>
+    </div>`;
+}
+
+// ===================== ADD / EDIT TRACTOR =====================
+
+function openAddTractor() {
+  document.getElementById('add-tractor-title').textContent = 'Nouveau tracteur';
+  document.getElementById('edit-tractor-id').value = '';
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-model').value = '';
+  document.getElementById('new-year').value = new Date().getFullYear();
+  document.getElementById('new-hours').value = '';
+  document.getElementById('new-next-service').value = '';
+  document.getElementById('cp-vidange').value = 500;
+  document.getElementById('cp-hydraulique').value = 1000;
+  document.getElementById('cp-graissage').value = 50;
+  document.getElementById('cp-air').value = 500;
+  document.getElementById('custom-plan-fields').style.display = 'none';
+  openModal('modal-add-tractor');
+}
+
+function openEditTractor(id) {
+  closeAllMenus();
+  const t = tractors.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('add-tractor-title').textContent = 'Modifier — ' + t.name;
+  document.getElementById('edit-tractor-id').value = t.id;
+  document.getElementById('new-name').value = t.name;
+  document.getElementById('new-model').value = t.modelKey || '';
+  document.getElementById('new-year').value = t.year || '';
+  document.getElementById('new-hours').value = t.hours || 0;
+  document.getElementById('new-next-service').value = t.nextService || '';
+  document.getElementById('cp-vidange').value = (t.plan || {}).vidange || 500;
+  document.getElementById('cp-hydraulique').value = (t.plan || {}).hydraulique || 1000;
+  document.getElementById('cp-graissage').value = (t.plan || {}).graissage || 50;
+  document.getElementById('cp-air').value = (t.plan || {}).air || 500;
+  document.getElementById('custom-plan-fields').style.display = 'block';
+  openModal('modal-add-tractor');
+}
+
+function onModelSelect() {
+  const key = document.getElementById('new-model').value;
+  const mp = MODEL_PLANS[key];
+  if (mp) {
+    document.getElementById('cp-vidange').value = mp.plan.vidange;
+    document.getElementById('cp-hydraulique').value = mp.plan.hydraulique;
+    document.getElementById('cp-graissage').value = mp.plan.graissage;
+    document.getElementById('cp-air').value = mp.plan.air;
+  }
+  document.getElementById('custom-plan-fields').style.display = key ? 'block' : 'none';
+}
+
+function saveTractor() {
+  const name = document.getElementById('new-name').value.trim();
+  if (!name) { alert('Veuillez saisir un nom.'); return; }
+
+  const hours = parseInt(document.getElementById('new-hours').value) || 0;
+  const year = parseInt(document.getElementById('new-year').value) || null;
+  const nextServiceRaw = document.getElementById('new-next-service').value;
+  const nextService = nextServiceRaw ? parseInt(nextServiceRaw) : null;
+  const modelKey = document.getElementById('new-model').value;
+  const mp = MODEL_PLANS[modelKey];
+  const modelLabel = mp ? mp.label : (modelKey === 'custom' ? 'Personnalisé' : (modelKey || 'Personnalisé'));
+
+  const plan = {
+    vidange:     parseInt(document.getElementById('cp-vidange').value) || 500,
+    hydraulique: parseInt(document.getElementById('cp-hydraulique').value) || 1000,
+    graissage:   parseInt(document.getElementById('cp-graissage').value) || 50,
+    air:         parseInt(document.getElementById('cp-air').value) || 500,
+  };
+
+  const editId = document.getElementById('edit-tractor-id').value;
+
+  if (editId) {
+    const t = tractors.find(x => x.id === editId);
+    if (t) Object.assign(t, { name, modelKey, modelLabel, year, hours, nextService, plan });
+  } else {
+    tractors.push({
+      id: genId(), name, modelKey, modelLabel, year, hours, nextService,
+      plan, lastService: {}, maintenanceLogs: [], fuelLogs: [],
+    });
+  }
+
+  save();
+  closeModal('modal-add-tractor');
+  renderFleet();
+}
+
+function deleteTractor(id) {
+  closeAllMenus();
+  const t = tractors.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`Supprimer "${t.name}" et toutes ses données ? Cette action est irréversible.`)) return;
+  tractors = tractors.filter(x => x.id !== id);
+  if (selectedId === id) selectedId = null;
+  save();
+  renderFleet();
+}
+
+// ===================== UPDATE HOURS =====================
+
+function openUpdateHours(tractorId) {
+  closeAllMenus();
+  const t = tractors.find(x => x.id === tractorId);
+  if (!t) return;
+  hoursState.tractorId = tractorId;
+  document.getElementById('hours-value').value = t.hours || 0;
+  openModal('modal-hours');
+}
+
+function saveHours() {
+  const t = tractors.find(x => x.id === hoursState.tractorId);
+  if (!t) return;
+  const val = parseInt(document.getElementById('hours-value').value);
+  if (isNaN(val) || val < 0) { alert('Valeur invalide.'); return; }
+  t.hours = val;
+  save();
+  closeModal('modal-hours');
+  renderFleet();
+}
+
+// ===================== OPERATIONS =====================
+
+function openOperation(tractorId, mode) {
+  closeAllMenus();
+  opState.tractorId = tractorId;
+  opState.mode = mode;
+  selectedTravaux = [];
+
+  const t = tractors.find(x => x.id === tractorId);
+  const isPlein = mode === 'plein';
+
+  document.getElementById('modal-op-title').textContent =
+    isPlein ? '⛽ Plein GNR — ' + (t?.name || '') : '🔧 Entretien — ' + (t?.name || '');
+  document.getElementById('op-maint-section').style.display = isPlein ? 'none' : 'block';
+  document.getElementById('op-fuel-section').style.display = isPlein ? 'block' : 'none';
+
+  document.getElementById('op-date').value = today();
+  document.getElementById('op-hours').value = t?.hours || '';
+
+  if (isPlein) {
+    document.getElementById('fuel-liters').value = '';
+    document.getElementById('fuel-price').value = '1.10';
+    document.getElementById('fuel-notes').value = '';
+    renderTravauxPicker();
+  } else {
+    document.getElementById('op-type').value = 'vidange';
+    document.getElementById('op-cost').value = '';
+    document.getElementById('op-desc').value = '';
+    document.getElementById('op-tech').value = '';
+  }
+
+  openModal('modal-operation');
+}
+
+function renderTravauxPicker() {
+  const picker = document.getElementById('travaux-picker');
+  picker.innerHTML = TRAVAUX.map(tw =>
+    `<button type="button" class="travaux-btn ${selectedTravaux.includes(tw.id) ? 'selected' : ''}"
+      onclick="toggleTravaux('${tw.id}')">${esc(tw.label)}</button>`
+  ).join('');
+}
+
+function toggleTravaux(id) {
+  if (selectedTravaux.includes(id)) {
+    selectedTravaux = selectedTravaux.filter(x => x !== id);
+  } else {
+    selectedTravaux.push(id);
+  }
+  renderTravauxPicker();
+}
+
+function saveOperation() {
+  const t = tractors.find(x => x.id === opState.tractorId);
+  if (!t) return;
+
+  const date = document.getElementById('op-date').value;
+  const hours = parseInt(document.getElementById('op-hours').value);
+
+  if (!date) { alert('Veuillez saisir une date.'); return; }
+  if (isNaN(hours) || hours < 0) { alert('Veuillez saisir un compteur valide.'); return; }
+
+  if (opState.mode === 'maintenance') {
+    const type = document.getElementById('op-type').value;
+    const cost = parseFloat(document.getElementById('op-cost').value) || 0;
+    const description = document.getElementById('op-desc').value.trim();
+    const tech = document.getElementById('op-tech').value.trim();
+
+    t.maintenanceLogs = t.maintenanceLogs || [];
+    t.maintenanceLogs.push({ id: genId(), date, hours, type, cost, description, tech });
+
+    if (['vidange', 'hydraulique', 'graissage', 'air'].includes(type)) {
+      t.lastService = t.lastService || {};
+      t.lastService[type] = hours;
+    }
+  } else {
+    const liters = parseFloat(document.getElementById('fuel-liters').value) || 0;
+    const pricePerL = parseFloat(document.getElementById('fuel-price').value) || 0;
+    const notes = document.getElementById('fuel-notes').value.trim();
+
+    if (!liters) { alert('Veuillez saisir un nombre de litres.'); return; }
+
+    t.fuelLogs = t.fuelLogs || [];
+    t.fuelLogs.push({ id: genId(), date, hours, liters, pricePerL, travaux: [...selectedTravaux], notes });
+  }
+
+  if (hours > (t.hours || 0)) t.hours = hours;
+
+  save();
+  closeModal('modal-operation');
+  renderFleet();
+}
+
+// ===================== DELETE LOGS =====================
+
+function deleteMaintLog(tractorId, logId) {
+  if (!confirm('Supprimer cet entretien ?')) return;
+  const t = tractors.find(x => x.id === tractorId);
+  if (!t) return;
+  t.maintenanceLogs = (t.maintenanceLogs || []).filter(l => l.id !== logId);
+  save();
+  renderFleet();
+}
+
+function deleteFuelLog(tractorId, logId) {
+  if (!confirm('Supprimer ce plein ?')) return;
+  const t = tractors.find(x => x.id === tractorId);
+  if (!t) return;
+  t.fuelLogs = (t.fuelLogs || []).filter(l => l.id !== logId);
+  save();
+  renderFleet();
+}
+
+// ===================== MODAL MANAGEMENT =====================
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ===================== EXPORT / IMPORT =====================
+
+function exportData() {
+  const data = { version: 1, exported: today(), tractors };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `suivi-materiel-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data.tractors)) throw new Error('Format invalide');
+      if (!confirm(`Importer ${data.tractors.length} tracteur(s) ? Les données actuelles seront remplacées.`)) return;
+      tractors = data.tractors;
+      selectedId = null;
+      save();
+      renderFleet();
+    } catch(err) {
+      alert('Erreur lors de l\'import : ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ===================== INIT =====================
+
+load();
+renderFleet();
+</script>
+</body>
+</html>
