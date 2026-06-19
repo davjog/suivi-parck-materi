@@ -1161,9 +1161,10 @@
       <button class="modal-close" onclick="closeModal('modal-github')">×</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.5;">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;">
         Sauvegarde les données dans un fichier JSON sur votre dépôt GitHub.<br>
-        Créez un <strong>Personal Access Token</strong> sur github.com → Settings → Developer settings → Tokens (classic) avec le scope <code>repo</code>.
+        Créez un <strong>Personal Access Token</strong> sur github.com → Settings → Developer settings → Tokens (classic) avec le scope <code>repo</code>.<br>
+        <strong style="color:#c62828;">Le dépôt doit exister avant de sauvegarder.</strong>
       </p>
       <div class="form-group">
         <label class="form-label">Token GitHub</label>
@@ -1177,10 +1178,12 @@
         <label class="form-label">Nom du fichier</label>
         <input class="form-input" id="gh-path" placeholder="backup.json" value="backup.json">
       </div>
-      <div id="gh-status" style="font-size:12px;min-height:18px;margin-top:4px;"></div>
+      <div id="gh-size-info" style="font-size:11px;color:var(--text-dim);margin-top:2px;"></div>
+      <div id="gh-status" style="font-size:12px;min-height:18px;margin-top:6px;font-weight:500;"></div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px;">
       <button class="btn btn-danger" onclick="closeModal('modal-github')">Fermer</button>
+      <button class="btn" style="background:#555;color:#fff;" onclick="testGithubConnection()">🔌 Tester</button>
       <button class="btn" style="background:#24292f;color:#fff;" onclick="restoreFromGithub()">⬇ Restaurer</button>
       <button class="btn" onclick="saveToGithub()">☁ Sauvegarder</button>
     </div>
@@ -2860,6 +2863,10 @@ function openGithubModal() {
   document.getElementById('gh-repo').value = s.repo || '';
   document.getElementById('gh-path').value = s.path || 'backup.json';
   document.getElementById('gh-status').textContent = '';
+  // show current data size
+  const kb = Math.round(new Blob([JSON.stringify(DB)]).size / 1024);
+  const sizeEl = document.getElementById('gh-size-info');
+  if (sizeEl) sizeEl.textContent = `Taille des données : ${kb} KB${kb > 700 ? ' — les photos seront exclues pour respecter la limite GitHub' : ''}`;
   openModal('modal-github');
 }
 
@@ -2868,67 +2875,129 @@ function _ghSettings() {
   const repo  = document.getElementById('gh-repo').value.trim();
   const path  = document.getElementById('gh-path').value.trim() || 'backup.json';
   if (!token || !repo) {
-    document.getElementById('gh-status').textContent = '⚠ Token et dépôt requis.';
+    _ghStatus('⚠ Token et dépôt requis.', false);
     return null;
   }
   localStorage.setItem(GH_SETTINGS_KEY, JSON.stringify({ token, repo, path }));
   return { token, repo, path };
 }
 
-function _ghStatus(msg, ok) {
+function _ghStatus(msg, state) {
+  // state: true = success (green), false = error (red), null/undefined = neutral (gray)
   const el = document.getElementById('gh-status');
-  if (el) { el.textContent = msg; el.style.color = ok ? '#2e7d32' : '#c62828'; }
+  if (el) {
+    el.textContent = msg;
+    el.style.color = state === true ? '#2e7d32' : state === false ? '#c62828' : '#555';
+  }
+}
+
+function _dbWithoutPhotos(db) {
+  const stripPhotos = obj => {
+    const copy = Object.assign({}, obj);
+    for (const k of Object.keys(copy)) {
+      if (typeof copy[k] === 'string' && copy[k].startsWith('data:')) copy[k] = null;
+    }
+    return copy;
+  };
+  return Object.assign({}, db, {
+    tractors: (db.tractors || []).map(stripPhotos),
+    operations: (db.operations || []).map(stripPhotos),
+    vehicles: (db.vehicles || []).map(stripPhotos),
+    entretiens_vehicules: (db.entretiens_vehicules || []).map(stripPhotos),
+  });
+}
+
+async function testGithubConnection() {
+  const s = _ghSettings(); if (!s) return;
+  _ghStatus('Test en cours…');
+  try {
+    const res = await fetch(`https://api.github.com/repos/${s.repo}`, {
+      headers: { 'Authorization': `Bearer ${s.token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      _ghStatus(`✓ Dépôt trouvé : ${data.full_name} (${data.private ? 'privé' : 'public'})`, true);
+    } else if (res.status === 404) {
+      _ghStatus('✗ Dépôt introuvable — vérifiez le nom (propriétaire/dépôt)', false);
+    } else if (res.status === 401) {
+      _ghStatus('✗ Token invalide ou expiré (401)', false);
+    } else if (res.status === 403) {
+      _ghStatus('✗ Accès refusé — vérifiez les permissions du token (scope repo)', false);
+    } else {
+      _ghStatus(`✗ Erreur ${res.status}`, false);
+    }
+  } catch (e) {
+    _ghStatus('✗ Erreur réseau : ' + e.message, false);
+  }
 }
 
 async function saveToGithub() {
   const s = _ghSettings(); if (!s) return;
   _ghStatus('Sauvegarde en cours…');
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(DB, null, 2))));
-  const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
-  const headers = { 'Authorization': `token ${s.token}`, 'Content-Type': 'application/json' };
-  // get current sha if file exists
-  let sha;
   try {
-    const r = await fetch(url, { headers });
-    if (r.ok) { sha = (await r.json()).sha; }
-  } catch(_) {}
-  const body = { message: `Sauvegarde ${new Date().toLocaleString('fr')}`, content };
-  if (sha) body.sha = sha;
-  const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
-  if (res.ok) {
-    _ghStatus('✓ Sauvegardé sur GitHub !', true);
-  } else {
-    const err = await res.json().catch(() => ({}));
-    _ghStatus('✗ Erreur : ' + (err.message || res.status));
+    let jsonStr = JSON.stringify(DB, null, 2);
+    let sizeKB = Math.round(new Blob([jsonStr]).size / 1024);
+    let sizeNote = '';
+    if (sizeKB > 700) {
+      jsonStr = JSON.stringify(_dbWithoutPhotos(DB), null, 2);
+      sizeKB = Math.round(new Blob([jsonStr]).size / 1024);
+      sizeNote = ` (photos exclues, ${sizeKB} KB)`;
+    }
+    const content = btoa(unescape(encodeURIComponent(jsonStr)));
+    const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
+    const headers = { 'Authorization': `Bearer ${s.token}`, 'Content-Type': 'application/json' };
+    let sha;
+    const rGet = await fetch(url, { headers });
+    if (rGet.ok) { sha = (await rGet.json()).sha; }
+    else if (rGet.status === 401) { _ghStatus('✗ Token invalide ou expiré (401)', false); return; }
+    else if (rGet.status === 403) { _ghStatus('✗ Accès refusé — scope repo requis (403)', false); return; }
+    else if (rGet.status === 404) { /* file doesn't exist yet — ok */ }
+    else { _ghStatus(`✗ Erreur ${rGet.status} lors de la vérification du fichier`, false); return; }
+    const body = { message: `Sauvegarde ${new Date().toLocaleString('fr')}`, content };
+    if (sha) body.sha = sha;
+    const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (res.ok) {
+      _ghStatus(`✓ Sauvegardé sur GitHub !${sizeNote}`, true);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.message || 'vérifiez le token et le dépôt';
+      _ghStatus(`✗ Erreur ${res.status} : ${detail}`, false);
+    }
+  } catch (e) {
+    _ghStatus('✗ Erreur réseau : ' + e.message, false);
   }
 }
 
 async function restoreFromGithub() {
   const s = _ghSettings(); if (!s) return;
   _ghStatus('Téléchargement en cours…');
-  const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
-  const headers = { 'Authorization': `token ${s.token}` };
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    _ghStatus('✗ Fichier introuvable : ' + res.status);
-    return;
-  }
-  const { content } = await res.json();
-  const json = decodeURIComponent(escape(atob(content.replace(/\n/g, ''))));
   try {
+    const url = `https://api.github.com/repos/${s.repo}/contents/${s.path}`;
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${s.token}` } });
+    if (!res.ok) {
+      if (res.status === 401) { _ghStatus('✗ Token invalide ou expiré (401)', false); return; }
+      if (res.status === 403) { _ghStatus('✗ Accès refusé (403)', false); return; }
+      if (res.status === 404) { _ghStatus('✗ Fichier introuvable — sauvegardez d\'abord (404)', false); return; }
+      _ghStatus(`✗ Erreur ${res.status}`, false); return;
+    }
+    const { content } = await res.json();
+    const json = decodeURIComponent(escape(atob(content.replace(/\n/g, ''))));
     const imported = JSON.parse(json);
     if (!imported.tractors) throw new Error('Format invalide');
     if (!confirm(`Restaurer ${imported.tractors.length} machine(s) depuis GitHub ? Les données actuelles seront remplacées.`)) return;
     DB = imported;
     if (!DB.travaux_log) DB.travaux_log = [];
+    if (!DB.vehicles) DB.vehicles = [];
+    if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
+    if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
     saveDB();
     selectedTractorId = null;
     document.getElementById('detail-panel-container').innerHTML = '';
     renderFleet();
     closeModal('modal-github');
     _ghStatus('✓ Restauré !', true);
-  } catch(err) {
-    _ghStatus('✗ Données invalides : ' + err.message);
+  } catch (e) {
+    _ghStatus('✗ Erreur : ' + e.message, false);
   }
 }
 
