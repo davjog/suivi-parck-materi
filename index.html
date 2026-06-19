@@ -574,7 +574,7 @@
   /* PHOTO TRACTEUR */
   .card-photo {
     width: 100%;
-    height: 90px;
+    height: 120px;
     background: var(--surface2) center/cover no-repeat;
     display: flex;
     align-items: center;
@@ -1170,8 +1170,13 @@ function selectTractor(id) {
 function renderDetailPanel(t) {
   const plan = MAINTENANCE_PLANS[t.model] || MAINTENANCE_PLANS['custom'];
   const container = document.getElementById('detail-panel-container');
+  const photoHtml = t.photo
+    ? `<div style="width:100%;height:160px;background:url('${t.photo}') center/cover no-repeat;border-radius:10px 10px 0 0;flex-shrink:0;"></div>`
+    : '';
   container.innerHTML = `
-    <div class="detail-panel">
+    <div class="detail-panel" style="padding-top:0;overflow:hidden;">
+      ${photoHtml}
+      <div style="padding:0 16px;">
       <div class="panel-tabs">
         <button class="panel-tab ${activePanelTab==='dashboard'?'active':''}" onclick="switchPanelTab('dashboard')">Tableau de bord</button>
         <button class="panel-tab ${activePanelTab==='carburant'?'active':''}" onclick="switchPanelTab('carburant')">Carburant</button>
@@ -1185,6 +1190,7 @@ function renderDetailPanel(t) {
         <div class="panel-section ${activePanelTab==='travaux'?'active':''}" id="tab-travaux">${renderTravaux(t)}</div>
         <div class="panel-section ${activePanelTab==='operations'?'active':''}" id="tab-operations">${renderOperations(t)}</div>
         <div class="panel-section ${activePanelTab==='plan'?'active':''}" id="tab-plan">${renderPlanEntretien(t, plan)}</div>
+      </div>
       </div>
     </div>`;
 }
