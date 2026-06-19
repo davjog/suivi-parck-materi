@@ -609,6 +609,24 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
+  /* VÉHICULES */
+  .vehicle-card { background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow .15s; }
+  .vehicle-card:hover { box-shadow:0 4px 16px rgba(0,0,0,0.10); }
+  .vehicle-card.selected { border-color:var(--accent);box-shadow:0 0 0 2px var(--accent); }
+  .vehicle-card-header { padding:14px 14px 10px;display:flex;justify-content:space-between;align-items:flex-start; }
+  .vehicle-name { font-weight:600;font-size:15px;color:var(--text); }
+  .vehicle-plate { font-family:var(--mono);font-size:11px;background:#1b5e20;color:#fff;border-radius:4px;padding:2px 7px;letter-spacing:0.05em; }
+  .vehicle-meta { font-size:11px;color:var(--text-dim);margin-top:2px; }
+  .vehicle-stats { display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid var(--border); }
+  .vehicle-stat { padding:10px 12px;text-align:center;border-right:1px solid var(--border); }
+  .vehicle-stat:last-child { border-right:none; }
+  .vehicle-stat-val { font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent); }
+  .vehicle-stat-lbl { font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px; }
+  .vehicle-detail { background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-top:16px;overflow:hidden; }
+  .vehicle-detail-header { padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center; }
+  .pv-row { display:grid;grid-template-columns:80px 1fr 70px 70px 70px;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;align-items:center; }
+  .pv-row:last-child { border-bottom:none; }
+  .pv-row-head { background:var(--surface2);font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--text-dim); }
 </style>
 </head>
 <body>
@@ -617,6 +635,7 @@
   <div class="logo">Suivi Matériel<span> // Flotte</span></div>
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="showPage('flotte')">Flotte</button>
+    <button class="nav-tab" onclick="showPage('vehicules')">Véhicules</button>
     <button class="nav-tab" onclick="showPage('alertes')">Alertes</button>
     <button class="nav-tab" onclick="showPage('historique')">Historique</button>
     <button class="nav-tab" onclick="showPage('recap')">Récap GNR</button>
@@ -656,6 +675,16 @@
       <div class="section-title">Historique global</div>
     </div>
     <div id="historique-list"></div>
+  </div>
+
+  <!-- PAGE VÉHICULES -->
+  <div class="page" id="page-vehicules">
+    <div class="fleet-header">
+      <div class="section-title">Véhicules</div>
+      <button class="btn" onclick="openAddVehicle()">+ Ajouter</button>
+    </div>
+    <div class="fleet-grid" id="vehicles-grid"></div>
+    <div id="vehicle-detail-container"></div>
   </div>
 
   <!-- PAGE RÉCAP GNR PAR TRAVAUX -->
@@ -964,6 +993,136 @@
   </div>
 </div>
 
+<!-- MODAL AJOUT VÉHICULE -->
+<div class="modal-overlay" id="modal-add-vehicle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Nouveau véhicule</div>
+      <button class="modal-close" onclick="closeModal('modal-add-vehicle')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Nom / Identifiant</label>
+          <input class="form-input" id="nv-name" placeholder="ex: Kangoo Blanc">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="nv-type">
+            <option value="voiture">Voiture</option>
+            <option value="utilitaire">Utilitaire</option>
+            <option value="camion">Camion</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Immatriculation</label>
+          <input class="form-input" id="nv-plate" placeholder="AB-123-CD">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Année</label>
+          <input class="form-input" id="nv-year" type="number" placeholder="2020">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kilométrage actuel</label>
+          <input class="form-input" id="nv-km" type="number" placeholder="45000">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-add-vehicle')">Annuler</button>
+      <button class="btn" onclick="saveVehicle()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ÉDITION VÉHICULE -->
+<div class="modal-overlay" id="modal-edit-vehicle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Modifier le véhicule</div>
+      <button class="modal-close" onclick="closeModal('modal-edit-vehicle')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ev-id">
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:1/-1;">
+          <label class="form-label">Nom / Identifiant</label>
+          <input class="form-input" id="ev-name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-input" id="ev-type">
+            <option value="voiture">Voiture</option>
+            <option value="utilitaire">Utilitaire</option>
+            <option value="camion">Camion</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Immatriculation</label>
+          <input class="form-input" id="ev-plate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Année</label>
+          <input class="form-input" id="ev-year" type="number">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kilométrage actuel</label>
+          <input class="form-input" id="ev-km" type="number">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-edit-vehicle')">Annuler</button>
+      <button class="btn" onclick="saveEditVehicle()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PLEIN VÉHICULE -->
+<div class="modal-overlay" id="modal-plein-vehicle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-pv-title">Saisir un plein</div>
+      <button class="modal-close" onclick="closeModal('modal-plein-vehicle')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" id="pv-date" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kilométrage au plein</label>
+          <input class="form-input" id="pv-km" type="number" placeholder="45200" oninput="calcPleinVehicle()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Litres</label>
+          <input class="form-input" id="pv-liters" type="number" step="0.01" placeholder="45.5" oninput="calcPleinVehicle()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prix / litre (€)</label>
+          <input class="form-input" id="pv-ppl" type="number" step="0.001" placeholder="1.85" oninput="calcPleinVehicle()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Total payé (€)</label>
+          <input class="form-input" id="pv-total" type="number" step="0.01" placeholder="84.18" oninput="calcPleinVehicleFromTotal()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Station</label>
+          <input class="form-input" id="pv-station" placeholder="ex: Total, E.Leclerc…">
+        </div>
+      </div>
+      <div id="pv-conso-preview" style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:6px;font-family:var(--mono);font-size:12px;display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="closeModal('modal-plein-vehicle')">Annuler</button>
+      <button class="btn" onclick="savePleinVehicle()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GITHUB BACKUP -->
 <div class="modal-overlay" id="modal-github">
   <div class="modal">
@@ -1102,6 +1261,8 @@ function loadDB() {
   if (!DB.pleins) DB.pleins = [];
   if (!DB.travaux_log) DB.travaux_log = [];
   if (!DB.parkLastGNRAlertAt) DB.parkLastGNRAlertAt = 0;
+  if (!DB.vehicles) DB.vehicles = [];
+  if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
 }
 
 function saveDB() {
@@ -1119,6 +1280,7 @@ function showPage(p) {
   if (p === 'alertes') renderAlerts();
   if (p === 'historique') renderHistorique();
   if (p === 'recap') renderRecap();
+  if (p === 'vehicules') renderVehicles();
 }
 
 // ===================== FLEET =====================
@@ -2128,6 +2290,239 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 document.addEventListener('click', () => {
   document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
 });
+
+// ===================== VÉHICULES =====================
+const VEHICLE_ICONS = { voiture:'🚗', utilitaire:'🚐', camion:'🚛', autre:'🚙' };
+let selectedVehicleId = null;
+let currentVehicleId = null;
+
+function renderVehicles() {
+  const grid = document.getElementById('vehicles-grid');
+  if (DB.vehicles.length === 0) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="icon">🚗</div>Aucun véhicule enregistré.<br>Cliquez sur "+ Ajouter" pour commencer.</div>`;
+    document.getElementById('vehicle-detail-container').innerHTML = '';
+    return;
+  }
+  grid.innerHTML = DB.vehicles.map(v => vehicleCard(v)).join('');
+  if (selectedVehicleId) {
+    const v = DB.vehicles.find(x => x.id === selectedVehicleId);
+    if (v) renderVehicleDetail(v);
+  }
+}
+
+function vehicleCard(v) {
+  const pleins = DB.pleins_vehicules.filter(p => p.vehicleId === v.id).sort((a,b) => a.km - b.km);
+  const totalL = pleins.reduce((s,p) => s+p.liters, 0);
+  const totalEur = pleins.reduce((s,p) => s+p.total, 0);
+  let avgConso = 0;
+  if (pleins.length >= 2) {
+    const kmSpan = pleins[pleins.length-1].km - pleins[0].km;
+    if (kmSpan > 0) avgConso = (totalL / kmSpan) * 100;
+  }
+  return `<div class="vehicle-card${selectedVehicleId===v.id?' selected':''}" onclick="selectVehicle('${v.id}')">
+    <div class="vehicle-card-header">
+      <div>
+        <div class="vehicle-name">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name}</div>
+        <div class="vehicle-meta">${v.year} — ${v.km.toLocaleString('fr')} km</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="vehicle-plate">${v.plate||'—'}</span>
+        <div class="card-menu-wrap">
+          <button class="card-menu-btn" onclick="toggleCardMenu(event,'vmenu-${v.id}')" title="Actions">⋮</button>
+          <div class="ctx-menu" id="vmenu-${v.id}">
+            <button class="ctx-menu-item" onclick="openEditVehicle(event,'${v.id}')">✏️ Modifier</button>
+            <button class="ctx-menu-item" onclick="openPleinVehicle(event,'${v.id}')">⛽ Plein gasoil</button>
+            <button class="ctx-menu-item danger" onclick="deleteVehicle(event,'${v.id}')">🗑 Supprimer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="vehicle-stats">
+      <div class="vehicle-stat">
+        <div class="vehicle-stat-val">${avgConso > 0 ? avgConso.toFixed(1) : '—'}</div>
+        <div class="vehicle-stat-lbl">L/100 km</div>
+      </div>
+      <div class="vehicle-stat">
+        <div class="vehicle-stat-val">${totalL.toFixed(0)}</div>
+        <div class="vehicle-stat-lbl">Litres total</div>
+      </div>
+      <div class="vehicle-stat">
+        <div class="vehicle-stat-val">${totalEur.toFixed(0)}€</div>
+        <div class="vehicle-stat-lbl">Coût total</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function selectVehicle(id) {
+  selectedVehicleId = (selectedVehicleId === id) ? null : id;
+  renderVehicles();
+  if (selectedVehicleId) {
+    document.getElementById('vehicle-detail-container').scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+}
+
+function renderVehicleDetail(v) {
+  const pleins = DB.pleins_vehicules.filter(p => p.vehicleId === v.id).sort((a,b) => b.km - a.km);
+  const container = document.getElementById('vehicle-detail-container');
+  let rows = '';
+  let prevKm = null;
+  const sorted_asc = [...pleins].sort((a,b) => a.km - b.km);
+  const consoMap = {};
+  for (let i = 1; i < sorted_asc.length; i++) {
+    const km = sorted_asc[i].km - sorted_asc[i-1].km;
+    if (km > 0) consoMap[sorted_asc[i].id] = (sorted_asc[i].liters / km * 100);
+  }
+  if (pleins.length === 0) {
+    rows = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun plein enregistré</div>`;
+  } else {
+    rows = `<div class="pv-row pv-row-head">
+      <span>Date</span><span>Station</span><span>km</span><span>Litres</span><span>€/L</span>
+    </div>` + pleins.map(p => {
+      const conso = consoMap[p.id] ? `<span style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-left:4px;">${consoMap[p.id].toFixed(1)} L/100</span>` : '';
+      return `<div class="pv-row">
+        <span style="font-family:var(--mono);font-size:11px;">${p.date}</span>
+        <span>${p.station||'—'}${conso}</span>
+        <span style="font-family:var(--mono);">${p.km.toLocaleString('fr')}</span>
+        <span style="font-family:var(--mono);">${p.liters.toFixed(1)} L<br><span style="font-size:10px;color:var(--text-dim);">${p.total.toFixed(2)}€</span></span>
+        <span style="font-family:var(--mono);">${p.pricePerLiter.toFixed(3)}</span>
+      </div>`;
+    }).join('');
+  }
+  container.innerHTML = `<div class="vehicle-detail">
+    <div class="vehicle-detail-header">
+      <div style="font-weight:600;">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name} — Historique pleins</div>
+      <button class="btn btn-sm" onclick="openPleinVehicle(event,'${v.id}')">+ Plein</button>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+function openAddVehicle() {
+  document.getElementById('nv-name').value = '';
+  document.getElementById('nv-type').value = 'voiture';
+  document.getElementById('nv-plate').value = '';
+  document.getElementById('nv-year').value = new Date().getFullYear();
+  document.getElementById('nv-km').value = '';
+  openModal('modal-add-vehicle');
+}
+
+function saveVehicle() {
+  const name = document.getElementById('nv-name').value.trim();
+  if (!name) return;
+  DB.vehicles.push({
+    id: 'V'+Date.now(),
+    name,
+    type: document.getElementById('nv-type').value,
+    plate: document.getElementById('nv-plate').value.trim().toUpperCase(),
+    year: parseInt(document.getElementById('nv-year').value) || new Date().getFullYear(),
+    km: parseInt(document.getElementById('nv-km').value) || 0
+  });
+  saveDB();
+  closeModal('modal-add-vehicle');
+  renderVehicles();
+}
+
+function openEditVehicle(e, id) {
+  e.stopPropagation();
+  document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+  const v = DB.vehicles.find(x => x.id === id);
+  document.getElementById('ev-id').value = id;
+  document.getElementById('ev-name').value = v.name;
+  document.getElementById('ev-type').value = v.type;
+  document.getElementById('ev-plate').value = v.plate || '';
+  document.getElementById('ev-year').value = v.year;
+  document.getElementById('ev-km').value = v.km;
+  openModal('modal-edit-vehicle');
+}
+
+function saveEditVehicle() {
+  const id = document.getElementById('ev-id').value;
+  const v = DB.vehicles.find(x => x.id === id);
+  v.name = document.getElementById('ev-name').value.trim() || v.name;
+  v.type = document.getElementById('ev-type').value;
+  v.plate = document.getElementById('ev-plate').value.trim().toUpperCase();
+  v.year = parseInt(document.getElementById('ev-year').value) || v.year;
+  v.km = parseInt(document.getElementById('ev-km').value) || v.km;
+  saveDB();
+  closeModal('modal-edit-vehicle');
+  renderVehicles();
+}
+
+function deleteVehicle(e, id) {
+  e.stopPropagation();
+  document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+  if (!confirm('Supprimer ce véhicule et tous ses pleins ?')) return;
+  DB.vehicles = DB.vehicles.filter(v => v.id !== id);
+  DB.pleins_vehicules = DB.pleins_vehicules.filter(p => p.vehicleId !== id);
+  if (selectedVehicleId === id) { selectedVehicleId = null; document.getElementById('vehicle-detail-container').innerHTML = ''; }
+  saveDB();
+  renderVehicles();
+}
+
+function openPleinVehicle(e, id) {
+  if (e) e.stopPropagation();
+  document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+  currentVehicleId = id;
+  const v = DB.vehicles.find(x => x.id === id);
+  document.getElementById('modal-pv-title').textContent = `Plein — ${v.name}`;
+  document.getElementById('pv-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pv-km').value = v.km;
+  document.getElementById('pv-liters').value = '';
+  document.getElementById('pv-ppl').value = '';
+  document.getElementById('pv-total').value = '';
+  document.getElementById('pv-station').value = '';
+  document.getElementById('pv-conso-preview').style.display = 'none';
+  openModal('modal-plein-vehicle');
+}
+
+function calcPleinVehicle() {
+  const l = parseFloat(document.getElementById('pv-liters').value);
+  const ppl = parseFloat(document.getElementById('pv-ppl').value);
+  if (l > 0 && ppl > 0) document.getElementById('pv-total').value = (l * ppl).toFixed(2);
+  _updatePleinPreview();
+}
+
+function calcPleinVehicleFromTotal() {
+  const l = parseFloat(document.getElementById('pv-liters').value);
+  const total = parseFloat(document.getElementById('pv-total').value);
+  if (l > 0 && total > 0) document.getElementById('pv-ppl').value = (total / l).toFixed(3);
+  _updatePleinPreview();
+}
+
+function _updatePleinPreview() {
+  const km = parseInt(document.getElementById('pv-km').value);
+  const l = parseFloat(document.getElementById('pv-liters').value);
+  const v = DB.vehicles.find(x => x.id === currentVehicleId);
+  const prev = DB.pleins_vehicules.filter(p => p.vehicleId === currentVehicleId).sort((a,b) => b.km - a.km)[0];
+  const el = document.getElementById('pv-conso-preview');
+  if (km > 0 && l > 0 && prev && km > prev.km) {
+    const dist = km - prev.km;
+    const conso = (l / dist * 100).toFixed(1);
+    el.innerHTML = `Distance depuis dernier plein : <strong>${dist} km</strong> — Consommation : <strong>${conso} L/100 km</strong>`;
+    el.style.display = 'block';
+  } else { el.style.display = 'none'; }
+}
+
+function savePleinVehicle() {
+  const v = DB.vehicles.find(x => x.id === currentVehicleId);
+  const km = parseInt(document.getElementById('pv-km').value);
+  const liters = parseFloat(document.getElementById('pv-liters').value);
+  const pricePerLiter = parseFloat(document.getElementById('pv-ppl').value) || 0;
+  const total = parseFloat(document.getElementById('pv-total').value) || +(liters * pricePerLiter).toFixed(2);
+  if (!km || !liters) return;
+  DB.pleins_vehicules.push({
+    id: 'PV'+Date.now(),
+    vehicleId: currentVehicleId,
+    date: document.getElementById('pv-date').value,
+    km, liters, pricePerLiter, total,
+    station: document.getElementById('pv-station').value.trim()
+  });
+  if (km > v.km) v.km = km;
+  saveDB();
+  closeModal('modal-plein-vehicle');
+  renderVehicles();
+}
 
 // ===================== INIT =====================
 loadDB();
