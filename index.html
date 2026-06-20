@@ -297,6 +297,12 @@
   /* ── PLAN ENTRETIEN ── */
   .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 600px) { .plan-grid { grid-template-columns: 1fr; } }
+
+  /* ── PICKER MULTI-TYPE ENTRETIEN ── */
+  .vent-type-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .vent-type-chk  { display: none; }
+  .vent-type-lbl  { display: inline-flex; align-items: center; padding: 5px 13px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 12px; cursor: pointer; user-select: none; transition: background .15s, border-color .15s, color .15s; color: var(--text); }
+  .vent-type-chk:checked + .vent-type-lbl { background: var(--accent); color: #fff; border-color: var(--accent); }
   .plan-block { background: var(--surface2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 14px; }
   .plan-block-title {
     font-family: var(--mono); font-size: 10px; color: var(--accent);
@@ -1069,23 +1075,23 @@
           <input class="form-input" id="vent-km" type="number" placeholder="45200">
         </div>
         <div class="form-group" style="grid-column:1/-1;">
-          <label class="form-label">Type d'entretien</label>
-          <select class="form-input" id="vent-type" onchange="toggleNatureField()">
-            <option value="vidange">Vidange + filtre</option>
-            <option value="revision">Révision générale</option>
-            <option value="pneus">Pneus</option>
-            <option value="frein_av">Plaquettes de frein AV</option>
-            <option value="frein_ar">Plaquettes de frein AR</option>
-            <option value="freins">Freins (général)</option>
-            <option value="courroie">Courroie de distribution</option>
-            <option value="batterie">Batterie</option>
-            <option value="climatisation">Climatisation</option>
-            <option value="controle_technique">Contrôle technique</option>
-            <option value="autre">Autre…</option>
-          </select>
+          <label class="form-label">Intervention(s) — sélection multiple</label>
+          <div class="vent-type-grid" id="vent-type-picker">
+            <span><input class="vent-type-chk" type="checkbox" id="vt-vidange"            value="vidange"><label            class="vent-type-lbl" for="vt-vidange">Vidange + filtre</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-frein_av"           value="frein_av"><label           class="vent-type-lbl" for="vt-frein_av">Frein AV</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-frein_ar"           value="frein_ar"><label           class="vent-type-lbl" for="vt-frein_ar">Frein AR</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-freins"             value="freins"><label             class="vent-type-lbl" for="vt-freins">Freins général</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-revision"           value="revision"><label           class="vent-type-lbl" for="vt-revision">Révision générale</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-pneus"              value="pneus"><label              class="vent-type-lbl" for="vt-pneus">Pneus</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-courroie"           value="courroie"><label           class="vent-type-lbl" for="vt-courroie">Courroie distrib.</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-batterie"           value="batterie"><label           class="vent-type-lbl" for="vt-batterie">Batterie</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-climatisation"      value="climatisation"><label      class="vent-type-lbl" for="vt-climatisation">Climatisation</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-controle_technique" value="controle_technique"><label class="vent-type-lbl" for="vt-controle_technique">Contrôle technique</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="vt-autre"              value="autre" onchange="toggleNatureField()"><label class="vent-type-lbl" for="vt-autre">Autre…</label></span>
+          </div>
         </div>
         <div class="form-group" style="grid-column:1/-1;display:none;" id="vent-nature-group">
-          <label class="form-label">Nature des travaux <span style="color:#c62828;">*</span></label>
+          <label class="form-label">Nature des travaux (Autre) <span style="color:#c62828;">*</span></label>
           <input class="form-input" id="vent-nature" placeholder="Décrivez les travaux effectués…">
         </div>
         <div class="form-group">
@@ -2479,6 +2485,24 @@ document.addEventListener('click', () => {
 
 // ===================== VÉHICULES =====================
 const VEHICLE_ICONS = { voiture:'🚗', utilitaire:'🚐', camion:'🚛', autre:'🚙' };
+
+const VEHICLE_PRECONISATIONS = [
+  { id:'vidange',            label:'Vidange + filtre huile',      km:15000, mois:12  },
+  { id:'frein_av',           label:'Plaquettes frein AV',         km:40000, mois:null},
+  { id:'frein_ar',           label:'Plaquettes frein AR',         km:60000, mois:null},
+  { id:'courroie',           label:'Courroie de distribution',    km:120000,mois:60  },
+  { id:'pneus',              label:'Rotation / contrôle pneus',   km:20000, mois:null},
+  { id:'batterie',           label:'Batterie (vérification)',     km:null,  mois:48  },
+  { id:'climatisation',      label:'Climatisation (recharge)',    km:null,  mois:24  },
+  { id:'controle_technique', label:'Contrôle technique',         km:null,  mois:24  },
+  { id:'revision',           label:'Révision générale',           km:30000, mois:24  },
+];
+
+const VTYPES_LABELS = {
+  vidange:'Vidange', frein_av:'Frein AV', frein_ar:'Frein AR', freins:'Freins',
+  revision:'Révision', pneus:'Pneus', courroie:'Courroie distrib.',
+  batterie:'Batterie', climatisation:'Climatisation', controle_technique:'CT', autre:'Autre'
+};
 let selectedVehicleId = null;
 let currentVehicleId = null;
 
@@ -2580,42 +2604,68 @@ function renderVehicleDetail(v) {
         </div>`;
       }).join('');
 
-  // Entretien labels
-  const typeLabelsV = { vidange:'Vidange', revision:'Révision', pneus:'Pneus',
-    frein_av:'Frein AV', frein_ar:'Frein AR', freins:'Freins',
-    courroie:'Courroie distrib.', batterie:'Batterie', climatisation:'Climatisation',
-    controle_technique:'CT', autre:'Autre' };
+  // Entretien display — support legacy single type and new multi-type
   const entretiensHtml = entretiens.length === 0
     ? `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun entretien enregistré</div>`
-    : entretiens.map(e => `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
-        <span class="log-date">${e.date}</span>
-        <span class="log-hours">${e.km.toLocaleString('fr')} km</span>
-        <span class="log-desc" style="flex:1;">${e.type==='autre'&&e.nature?e.nature:typeLabelsV[e.type]||e.type}${e.notes?' — '+e.notes:''}${e.cost?' · '+e.cost.toFixed(2)+'€':''}</span>
-        ${e.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${e.id}','vent')">🧾</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteEntretienV('${e.id}','${v.id}')">×</button>
-      </div>`).join('');
+    : entretiens.map(e => {
+        const types = e.types || [e.type];
+        const label = types.map(t => t==='autre'&&e.nature ? e.nature : (VTYPES_LABELS[t]||t)).join(' + ');
+        return `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
+          <span class="log-date">${e.date}</span>
+          <span class="log-hours">${e.km.toLocaleString('fr')} km</span>
+          <span class="log-desc" style="flex:1;">${label}${e.notes?' — '+e.notes:''}${e.cost?' · '+e.cost.toFixed(2)+'€':''}</span>
+          ${e.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${e.id}','vent')">🧾</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="deleteEntretienV('${e.id}','${v.id}')">×</button>
+        </div>`;
+      }).join('');
+
+  // Préconisations constructeur
+  const planHtml = VEHICLE_PRECONISATIONS.map(item => {
+    const matching = entretiens.filter(e => (e.types||[e.type]).includes(item.id)).sort((a,b) => b.km - a.km);
+    const last = matching[0];
+    const lastKm = last ? last.km : null;
+    const nextKm = (lastKm !== null && item.km) ? lastKm + item.km : (item.km || null);
+    const remaining = nextKm ? nextKm - v.km : null;
+    let badge, badgeColor;
+    if (remaining === null)    { badge = '—';                            badgeColor = 'var(--text-dim)'; }
+    else if (remaining <= 0)   { badge = '⚠ En retard';                 badgeColor = '#c62828'; }
+    else if (remaining <= 3000){ badge = `⚡ dans ${remaining.toLocaleString('fr')} km`; badgeColor = '#f57c00'; }
+    else                       { badge = `✓ dans ${remaining.toLocaleString('fr')} km`; badgeColor = '#2e7d32'; }
+    const subInfo = [
+      item.km  ? `tous les ${item.km.toLocaleString('fr')} km`   : '',
+      item.mois? `tous les ${item.mois} mois`                    : '',
+      lastKm   ? `dernier : ${lastKm.toLocaleString('fr')} km (${last.date})` : 'jamais effectué',
+    ].filter(Boolean).join(' · ');
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 16px;border-bottom:1px solid var(--border-light);">
+      <div>
+        <div style="font-size:13px;font-weight:500;">${item.label}</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${subInfo}</div>
+      </div>
+      <div style="font-family:var(--mono);font-size:12px;font-weight:600;color:${badgeColor};text-align:right;white-space:nowrap;margin-left:10px;">${badge}</div>
+    </div>`;
+  }).join('');
+
+  const tabStyle = (tab) => `flex:1;padding:10px;border:none;cursor:pointer;font-size:13px;
+    background:${vehicleDetailTab===tab?'var(--surface)':'var(--surface2)'};
+    font-weight:${vehicleDetailTab===tab?'600':'400'};
+    border-bottom:${vehicleDetailTab===tab?'2px solid var(--accent)':'2px solid transparent'};`;
 
   container.innerHTML = `<div class="vehicle-detail">
     <div class="vehicle-detail-header">
       <div style="font-weight:600;">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn btn-sm" style="background:#555;color:#fff;" onclick="printFicheEntretien('${v.id}')">🖨 Fiche PDF</button>
+        <button class="btn btn-sm" style="background:#555;color:#fff;" onclick="printFicheEntretien('${v.id}')">🖨 PDF</button>
         <button class="btn btn-sm" onclick="openPleinVehicle(event,'${v.id}')">⛽ Plein</button>
         <button class="btn btn-sm" onclick="openEntretienVehicle(event,'${v.id}')">🔧 Entretien</button>
       </div>
     </div>
     <div style="display:flex;border-bottom:1px solid var(--border);">
-      <button onclick="vehicleDetailTab='pleins';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))"
-        style="flex:1;padding:10px;border:none;background:${vehicleDetailTab==='pleins'?'var(--surface)':'var(--surface2)'};font-weight:${vehicleDetailTab==='pleins'?'600':'400'};border-bottom:${vehicleDetailTab==='pleins'?'2px solid var(--accent)':'2px solid transparent'};cursor:pointer;font-size:13px;">
-        ⛽ Pleins (${pleins.length})
-      </button>
-      <button onclick="vehicleDetailTab='entretien';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))"
-        style="flex:1;padding:10px;border:none;background:${vehicleDetailTab==='entretien'?'var(--surface)':'var(--surface2)'};font-weight:${vehicleDetailTab==='entretien'?'600':'400'};border-bottom:${vehicleDetailTab==='entretien'?'2px solid var(--accent)':'2px solid transparent'};cursor:pointer;font-size:13px;">
-        🔧 Entretien (${entretiens.length})
-      </button>
+      <button onclick="vehicleDetailTab='pleins';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))" style="${tabStyle('pleins')}">⛽ Pleins (${pleins.length})</button>
+      <button onclick="vehicleDetailTab='entretien';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))" style="${tabStyle('entretien')}">🔧 Entretien (${entretiens.length})</button>
+      <button onclick="vehicleDetailTab='plan';renderVehicleDetail(DB.vehicles.find(x=>x.id==='${v.id}'))" style="${tabStyle('plan')}">📋 Plan</button>
     </div>
     <div style="padding:4px 0;">
-      ${vehicleDetailTab === 'pleins' ? pleinsHtml : entretiensHtml}
+      ${vehicleDetailTab === 'pleins' ? pleinsHtml : vehicleDetailTab === 'entretien' ? entretiensHtml : planHtml}
     </div>
   </div>`;
 }
@@ -2628,7 +2678,7 @@ function openEntretienVehicle(e, id) {
   document.getElementById('modal-ev-title').textContent = `Entretien — ${v.name}`;
   document.getElementById('vent-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('vent-km').value = v.km;
-  document.getElementById('vent-type').value = 'vidange';
+  document.querySelectorAll('#vent-type-picker input').forEach(c => c.checked = false);
   document.getElementById('vent-nature').value = '';
   document.getElementById('vent-nature-group').style.display = 'none';
   document.getElementById('vent-cost').value = '';
@@ -2641,22 +2691,24 @@ function openEntretienVehicle(e, id) {
 }
 
 function toggleNatureField() {
-  const type = document.getElementById('vent-type').value;
+  const autreCbk = document.getElementById('vt-autre');
   const grp = document.getElementById('vent-nature-group');
-  if (grp) grp.style.display = type === 'autre' ? 'block' : 'none';
+  if (grp && autreCbk) grp.style.display = autreCbk.checked ? 'block' : 'none';
 }
 
 function saveEntretienVehicle() {
   const v = DB.vehicles.find(x => x.id === currentVehicleId);
   const km = parseInt(document.getElementById('vent-km').value) || v.km;
-  const type = document.getElementById('vent-type').value;
-  const nature = type === 'autre' ? document.getElementById('vent-nature').value.trim() : '';
+  const types = [...document.querySelectorAll('#vent-type-picker input:checked')].map(i => i.value);
+  if (types.length === 0) { alert('Sélectionnez au moins un type d\'intervention.'); return; }
+  const nature = types.includes('autre') ? document.getElementById('vent-nature').value.trim() : '';
   DB.entretiens_vehicules.push({
     id: 'EV'+Date.now(),
     vehicleId: currentVehicleId,
     date: document.getElementById('vent-date').value,
     km,
-    type,
+    types,
+    type: types[0],
     nature,
     cost: parseFloat(document.getElementById('vent-cost').value) || 0,
     notes: document.getElementById('vent-notes').value.trim(),
@@ -3262,7 +3314,8 @@ function printFicheEntretien(vehicleId) {
   const rows = entretiens.length === 0
     ? `<tr><td colspan="5" style="text-align:center;color:#888;padding:20px;">Aucun entretien enregistré</td></tr>`
     : entretiens.map(e => {
-        const type = e.type === 'autre' && e.nature ? e.nature : (typeLabels[e.type] || e.type);
+        const types = e.types || [e.type];
+        const type = types.map(t => t==='autre'&&e.nature ? e.nature : (typeLabels[t]||t)).join(' + ');
         return `<tr>
           <td>${e.date}</td>
           <td>${e.km.toLocaleString('fr')} km</td>
