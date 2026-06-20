@@ -692,18 +692,25 @@
           <input class="form-input" id="op-hours" type="number" min="0">
         </div>
         <div class="form-group" style="grid-column:1/-1;">
-          <label class="form-label">Type d'opération</label>
-          <select class="form-input" id="op-type">
-            <option value="vidange">Vidange moteur + filtre</option>
-            <option value="graissage">Graissage général</option>
-            <option value="hydraulique">Huile hydraulique / boîte</option>
-            <option value="adblue">Remplissage AdBlue</option>
-            <option value="pneu">Contrôle / Changement pneu</option>
-            <option value="filtre_air">Filtre à air</option>
-            <option value="filtre_carb">Filtre à carburant</option>
-            <option value="refroidissement">Liquide de refroidissement</option>
-            <option value="autre">Autre</option>
-          </select>
+          <label class="form-label">Opération(s) — sélection multiple</label>
+          <div class="vent-type-grid" id="op-type-picker">
+            <span><input class="vent-type-chk" type="checkbox" id="ot-vidange"        value="vidange"><label        class="vent-type-lbl" for="ot-vidange">Vidange + filtre</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-graissage"      value="graissage"><label      class="vent-type-lbl" for="ot-graissage">Graissage</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-hydraulique"    value="hydraulique"><label    class="vent-type-lbl" for="ot-hydraulique">Hydraulique / boîte</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-adblue"         value="adblue"><label         class="vent-type-lbl" for="ot-adblue">AdBlue</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-pneu"           value="pneu"><label           class="vent-type-lbl" for="ot-pneu">Pneus</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-filtre_air"     value="filtre_air"><label     class="vent-type-lbl" for="ot-filtre_air">Filtre à air</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-filtre_carb"    value="filtre_carb"><label    class="vent-type-lbl" for="ot-filtre_carb">Filtre carburant</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-refroidissement" value="refroidissement"><label class="vent-type-lbl" for="ot-refroidissement">Refroidissement</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-niveaux"        value="niveaux"><label        class="vent-type-lbl" for="ot-niveaux">Vérif. niveaux</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-courroies"      value="courroies"><label      class="vent-type-lbl" for="ot-courroies">Courroies</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-huile_pont"     value="huile_pont"><label     class="vent-type-lbl" for="ot-huile_pont">Huile ponts</label></span>
+            <span><input class="vent-type-chk" type="checkbox" id="ot-autre"          value="autre" onchange="toggleOpNatureField()"><label class="vent-type-lbl" for="ot-autre">Autre…</label></span>
+          </div>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;display:none;" id="op-nature-group">
+          <label class="form-label">Nature de l'opération (Autre) <span style="color:#c62828;">*</span></label>
+          <input class="form-input" id="op-nature" placeholder="Décrivez l'opération effectuée…">
         </div>
         <div class="form-group">
           <label class="form-label">Coût (€)</label>
@@ -1678,26 +1685,33 @@ function renderTravaux(t) {
 }
 
 // ===================== OPÉRATIONS =====================
+const OP_TYPE_LABELS = {
+  vidange:'Vidange moteur', graissage:'Graissage', hydraulique:'Hydraulique/Boîte',
+  adblue:'AdBlue', pneu:'Pneus', filtre_air:'Filtre à air', filtre_carb:'Filtre carburant',
+  refroidissement:'Refroidissement', niveaux:'Vérif. niveaux', courroies:'Courroies',
+  huile_pont:'Huile ponts', huile_hyd_totale:'Huile hydraulique totale',
+  vidange_3000:'Vidange longue durée', autre:'Autre'
+};
+
 function renderOperations(t) {
   const ops = DB.operations.filter(o => o.tractorId === t.id).sort((a,b) => new Date(b.date)-new Date(a.date));
-  const typeLabels = {
-    vidange:'Vidange moteur', graissage:'Graissage', hydraulique:'Hydraulique/Boîte',
-    adblue:'AdBlue', pneu:'Pneu', filtre_air:'Filtre à air',
-    filtre_carb:'Filtre carburant', refroidissement:'Refroidissement', autre:'Autre'
-  };
   return `
     <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
       <span class="stat-label" style="flex:1;">Journal des opérations</span>
       <button class="btn btn-sm" onclick="openOpModal('${t.id}')">+ Opération</button>
     </div>
     ${ops.length === 0 ? '<div class="empty-state"><div class="icon">🔧</div>Aucune opération enregistrée</div>' :
-      ops.map(op => `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
-        <span class="log-date">${op.date}</span>
-        <span class="log-hours">${op.hours} h</span>
-        <span class="log-desc" style="flex:1;">${typeLabels[op.type]||op.type}${op.notes?' — '+op.notes:''}${op.cost?' · '+op.cost.toFixed(2)+'€':''}</span>
-        ${op.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${op.id}','op')">🧾</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteOp('${op.id}','${t.id}')">×</button>
-      </div>`).join('')
+      ops.map(op => {
+        const opTypes = op.types || [op.type];
+        const label = opTypes.map(t => t==='autre'&&op.nature ? op.nature : (OP_TYPE_LABELS[t]||t)).join(' + ');
+        return `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
+          <span class="log-date">${op.date}</span>
+          <span class="log-hours">${op.hours} h</span>
+          <span class="log-desc" style="flex:1;">${label}${op.notes?' — '+op.notes:''}${op.cost?' · '+op.cost.toFixed(2)+'€':''}</span>
+          ${op.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${op.id}','op')">🧾</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="deleteOp('${op.id}','${t.id}')">×</button>
+        </div>`;
+      }).join('')
     }`;
 }
 
@@ -1707,7 +1721,7 @@ function renderPlanEntretien(t, plan) {
   const ops = DB.operations.filter(o => o.tractorId === t.id);
 
   function lastDone(type) {
-    const matching = ops.filter(o => o.type === type).sort((a,b) => b.hours - a.hours);
+    const matching = ops.filter(o => (o.types||[o.type]).includes(type)).sort((a,b) => b.hours - a.hours);
     return matching[0] ? matching[0].hours : t.lastServiceHours || 0;
   }
 
@@ -2341,13 +2355,21 @@ function saveHours() {
   selectTractor(currentOpTractorId);
 }
 
+function toggleOpNatureField() {
+  const autreCbk = document.getElementById('ot-autre');
+  const grp = document.getElementById('op-nature-group');
+  if (grp && autreCbk) grp.style.display = autreCbk.checked ? 'block' : 'none';
+}
+
 function openOpModal(id) {
   currentOpTractorId = id;
   const t = DB.tractors.find(x => x.id === id);
   document.getElementById('modal-op-title').textContent = `Opération — ${t.name}`;
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('op-hours').value = t.hours;
-  document.getElementById('op-type').value = 'vidange';
+  document.querySelectorAll('#op-type-picker input').forEach(c => c.checked = false);
+  document.getElementById('op-nature').value = '';
+  document.getElementById('op-nature-group').style.display = 'none';
   document.getElementById('op-cost').value = '';
   document.getElementById('op-notes').value = '';
   document.getElementById('op-invoice-data').value = '';
@@ -2361,25 +2383,21 @@ function saveOperation() {
   const t = DB.tractors.find(x => x.id === currentOpTractorId);
   const date = document.getElementById('op-date').value;
   const hours = parseInt(document.getElementById('op-hours').value) || t.hours;
-  const type = document.getElementById('op-type').value;
+  const types = [...document.querySelectorAll('#op-type-picker input:checked')].map(i => i.value);
+  if (types.length === 0) { alert('Sélectionnez au moins un type d\'opération.'); return; }
+  const nature = types.includes('autre') ? document.getElementById('op-nature').value.trim() : '';
   const notes = document.getElementById('op-notes').value.trim();
-
   const cost = parseFloat(document.getElementById('op-cost').value) || 0;
   const invoicePhoto = document.getElementById('op-invoice-data').value || null;
-  DB.operations.push({ id: 'O'+Date.now(), tractorId: currentOpTractorId, date, hours, type, notes, cost, invoicePhoto });
-
-  // Update tractor hours if higher
+  DB.operations.push({ id:'O'+Date.now(), tractorId:currentOpTractorId, date, hours, types, type:types[0], nature, notes, cost, invoicePhoto });
   if (hours > t.hours) t.hours = hours;
-
-  // If vidange, update next service
-  if (type === 'vidange') {
+  if (types.includes('vidange')) {
     const plan = MAINTENANCE_PLANS[t.model] || MAINTENANCE_PLANS['custom'];
-    const vidangeItem = plan.plan.find(function(p) { return p.id === 'vidange'; });
+    const vidangeItem = plan.plan.find(p => p.id === 'vidange');
     const interval = (vidangeItem && vidangeItem.interval) || 500;
     t.nextService = hours + interval;
     t.lastServiceHours = hours;
   }
-
   saveDB();
   closeModal('modal-operation');
   selectTractor(currentOpTractorId);
