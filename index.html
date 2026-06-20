@@ -581,6 +581,7 @@
   <div class="page" id="page-recap">
     <div class="fleet-header">
       <div class="section-title">Récapitulatif GNR par travaux — Parc complet</div>
+      <button class="btn btn-sm" onclick="printRecapGNR()">🖨 Imprimer PDF</button>
     </div>
     <div id="recap-list"></div>
   </div>
@@ -2563,7 +2564,8 @@ function renderVehicleDetail(v) {
   container.innerHTML = `<div class="vehicle-detail">
     <div class="vehicle-detail-header">
       <div style="font-weight:600;">${VEHICLE_ICONS[v.type]||'🚗'} ${v.name}</div>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-sm" style="background:#555;color:#fff;" onclick="printFicheEntretien('${v.id}')">🖨 Fiche PDF</button>
         <button class="btn btn-sm" onclick="openPleinVehicle(event,'${v.id}')">⛽ Plein</button>
         <button class="btn btn-sm" onclick="openEntretienVehicle(event,'${v.id}')">🔧 Entretien</button>
       </div>
@@ -3019,6 +3021,193 @@ async function restoreFromGithub() {
   } catch (e) {
     _ghStatus('✗ Erreur : ' + e.message, false);
   }
+}
+
+// ===================== IMPRESSION / PDF =====================
+
+function _openPrintWindow(title, bodyHtml) {
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { alert('Autorisez les popups pour imprimer.'); return; }
+  w.document.write(`<!DOCTYPE html><html lang="fr"><head>
+  <meta charset="utf-8"><title>${title}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:24px;}
+    h1{font-size:17px;color:#2e7d32;border-bottom:2px solid #2e7d32;padding-bottom:6px;margin-bottom:8px;}
+    .info{color:#555;font-size:11px;margin-bottom:14px;line-height:1.6;}
+    .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}
+    .stat{border:1px solid #ccc;border-radius:6px;padding:10px;text-align:center;}
+    .stat-val{font-size:18px;font-weight:700;color:#2e7d32;line-height:1.2;}
+    .stat-lbl{font-size:10px;color:#666;margin-top:2px;}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;}
+    thead tr{background:#2e7d32;color:#fff;}
+    th{padding:7px 8px;text-align:left;font-weight:600;}
+    td{padding:5px 8px;border-bottom:1px solid #e0e0e0;vertical-align:top;}
+    tr.activity td{background:#f1f8f1;font-weight:500;}
+    tr.sub td{color:#444;}
+    tr.total td{background:#e8f5e9;font-weight:700;border-top:2px solid #2e7d32;}
+    tr:nth-child(even):not(.activity):not(.total):not(.sub) td{background:#fafafa;}
+    @media print{@page{margin:12mm;size:A4;}body{padding:0;}}
+  </style>
+</head><body>${bodyHtml}<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},350);});<\/script></body></html>`);
+  w.document.close();
+}
+
+function printFicheEntretien(vehicleId) {
+  const v = DB.vehicles.find(x => x.id === vehicleId);
+  if (!v) return;
+  const entretiens = DB.entretiens_vehicules.filter(e => e.vehicleId === vehicleId)
+    .sort((a,b) => new Date(b.date) - new Date(a.date));
+  const typeLabels = {
+    vidange:'Vidange + filtre', revision:'Révision générale', pneus:'Pneus',
+    frein_av:'Plaquettes frein AV', frein_ar:'Plaquettes frein AR', freins:'Freins (général)',
+    courroie:'Courroie de distribution', batterie:'Batterie', climatisation:'Climatisation',
+    controle_technique:'Contrôle technique', autre:'Autre'
+  };
+  const totalCout = entretiens.reduce((s,e) => s+(e.cost||0), 0);
+  const pleins = DB.pleins_vehicules.filter(p => p.vehicleId === vehicleId);
+  const totalL   = pleins.reduce((s,p) => s+(p.liters||0), 0);
+  const totalEur = pleins.reduce((s,p) => s+(p.total||0), 0);
+
+  const rows = entretiens.length === 0
+    ? `<tr><td colspan="5" style="text-align:center;color:#888;padding:20px;">Aucun entretien enregistré</td></tr>`
+    : entretiens.map(e => {
+        const type = e.type === 'autre' && e.nature ? e.nature : (typeLabels[e.type] || e.type);
+        return `<tr>
+          <td>${e.date}</td>
+          <td>${e.km.toLocaleString('fr')} km</td>
+          <td>${type}</td>
+          <td>${e.notes || '—'}</td>
+          <td style="text-align:right;">${e.cost ? e.cost.toFixed(2)+' €' : '—'}</td>
+        </tr>`;
+      }).join('');
+
+  const html = `
+    <h1>${VEHICLE_ICONS[v.type]||'🚗'} ${v.name} — Fiche Entretien</h1>
+    <div class="info">
+      Immatriculation : <strong>${v.immat||'N/A'}</strong> &nbsp;·&nbsp;
+      Modèle : <strong>${v.model||'N/A'}</strong> &nbsp;·&nbsp;
+      Kilométrage actuel : <strong>${v.km.toLocaleString('fr')} km</strong><br>
+      Édité le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-val">${entretiens.length}</div><div class="stat-lbl">Interventions</div></div>
+      <div class="stat"><div class="stat-val">${totalCout.toFixed(2)} €</div><div class="stat-lbl">Coût entretien total</div></div>
+      <div class="stat"><div class="stat-val">${totalL.toFixed(0)} L</div><div class="stat-lbl">Carburant total</div></div>
+      <div class="stat"><div class="stat-val">${totalEur.toFixed(2)} €</div><div class="stat-lbl">Coût carburant total</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Date</th><th>Kilométrage</th><th>Intervention</th><th>Notes / Garage</th><th style="text-align:right;">Coût</th></tr></thead>
+      <tbody>
+        ${rows}
+        ${entretiens.length > 0 ? `<tr class="total"><td colspan="4">Total coût entretien</td><td style="text-align:right;">${totalCout.toFixed(2)} €</td></tr>` : ''}
+      </tbody>
+    </table>`;
+
+  _openPrintWindow(`Fiche entretien — ${v.name}`, html);
+}
+
+function printRecapGNR() {
+  const byYear = {};
+  function addStat(year, key, tractorName, heures, gnr) {
+    if (!byYear[year]) byYear[year] = {};
+    if (!byYear[year][key]) byYear[year][key] = { heures:0, gnr:0, count:0, parTracteur:{} };
+    byYear[year][key].heures += heures||0;
+    byYear[year][key].gnr   += gnr||0;
+    byYear[year][key].count++;
+    if (!byYear[year][key].parTracteur[tractorName]) byYear[year][key].parTracteur[tractorName] = { heures:0, gnr:0, count:0 };
+    byYear[year][key].parTracteur[tractorName].heures += heures||0;
+    byYear[year][key].parTracteur[tractorName].gnr   += gnr||0;
+    byYear[year][key].parTracteur[tractorName].count++;
+  }
+  DB.tractors.forEach(t => {
+    (DB.travaux_log||[]).filter(w => w.tractorId===t.id).forEach(w => {
+      const year = w.date ? w.date.slice(0,4) : 'Inconnu';
+      addStat(year, w.type, t.name, w.heures||0, 0);
+    });
+    const allPleins = DB.pleins.filter(p => p.tractorId===t.id)
+      .sort((a,b) => a.hours-b.hours||new Date(a.date)-new Date(b.date));
+    for (let i=0; i<allPleins.length; i++) {
+      const c = allPleins[i];
+      if (!c.travaux) continue;
+      const pr = allPleins[i-1];
+      const gnr = pr ? (pr.gnr||0) : 0;
+      const heures = (pr && c.hours && pr.hours) ? Math.max(0,c.hours-pr.hours) : 0;
+      addStat(c.date?c.date.slice(0,4):'Inconnu', c.travaux, t.name, heures, gnr);
+    }
+  });
+  const years = Object.keys(byYear).sort((a,b) => b.localeCompare(a));
+  if (years.length === 0) { alert('Aucune donnée de travaux à imprimer.'); return; }
+  const allStats = {};
+  Object.values(byYear).forEach(ys => Object.entries(ys).forEach(([k,val]) => {
+    if (!allStats[k]) allStats[k] = { heures:0, gnr:0, count:0, parTracteur:{} };
+    allStats[k].heures += val.heures; allStats[k].gnr += val.gnr; allStats[k].count += val.count;
+    Object.entries(val.parTracteur).forEach(([nom,td]) => {
+      if (!allStats[k].parTracteur[nom]) allStats[k].parTracteur[nom] = { heures:0, gnr:0, count:0 };
+      allStats[k].parTracteur[nom].heures += td.heures;
+      allStats[k].parTracteur[nom].gnr   += td.gnr;
+      allStats[k].parTracteur[nom].count += td.count;
+    });
+  }));
+  const yearLabel = recapActiveYear === 'all' ? 'Toutes années' : recapActiveYear;
+  const stats = recapActiveYear === 'all' ? allStats : (byYear[recapActiveYear] || allStats);
+  const sorted = Object.entries(stats).sort((a,b) => b[1].heures - a[1].heures);
+  const totalH       = sorted.reduce((s,[,v]) => s+v.heures, 0);
+  const totalGNRTrav = sorted.reduce((s,[,v]) => s+v.gnr, 0);
+  const totalGNR = DB.pleins.filter(p => recapActiveYear==='all' || (p.date&&p.date.slice(0,4)===recapActiveYear))
+    .reduce((s,p) => s+(p.gnr||0), 0);
+  const totalInterv = sorted.reduce((s,[,v]) => s+v.count, 0);
+
+  const yearTabsHtml = `<div style="margin-bottom:14px;font-size:11px;color:#555;">
+    Période sélectionnée : <strong>${yearLabel}</strong>
+    &nbsp;·&nbsp; Années disponibles : ${['Toutes', ...years].join(', ')}
+  </div>`;
+
+  const rows = sorted.map(([key, val]) => {
+    const pct = totalH > 0 ? (val.heures/totalH*100) : 0;
+    const lph = val.heures>0 && val.gnr>0 ? val.gnr/val.heures : null;
+    const tracteurRows = Object.entries(val.parTracteur).map(([nom,td]) => {
+      const tpct = val.heures > 0 ? (td.heures/val.heures*100) : 0;
+      const tlph = td.heures>0 && td.gnr>0 ? td.gnr/td.heures : null;
+      return `<tr class="sub"><td style="padding-left:24px;color:#555;">↳ ${nom}</td>
+        <td>${td.count}</td><td>${td.heures.toFixed(1)} h</td>
+        <td>${td.gnr>0?td.gnr.toFixed(0)+' L':'—'}</td>
+        <td>${tlph!==null?tlph.toFixed(2)+' L/h':'—'}</td>
+        <td>${tpct.toFixed(0)} %</td></tr>`;
+    }).join('');
+    return `<tr class="activity">
+      <td><strong>${TRAVAUX_LABELS[key]||key}</strong></td>
+      <td>${val.count}</td><td>${val.heures.toFixed(1)} h</td>
+      <td>${val.gnr>0?val.gnr.toFixed(0)+' L':'—'}</td>
+      <td>${lph!==null?lph.toFixed(2)+' L/h':'—'}</td>
+      <td>${pct.toFixed(0)} %</td></tr>${tracteurRows}`;
+  }).join('');
+
+  const html = `
+    <h1>Récapitulatif GNR par travaux — ${yearLabel}</h1>
+    <div class="info">
+      Édité le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})} &nbsp;·&nbsp;
+      Parc : ${DB.tractors.length} machine${DB.tractors.length>1?'s':''}
+    </div>
+    ${yearTabsHtml}
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-val">${totalGNR.toFixed(0)} L</div><div class="stat-lbl">GNR total pleins</div></div>
+      <div class="stat"><div class="stat-val">${totalGNRTrav.toFixed(0)} L</div><div class="stat-lbl">GNR lié aux travaux</div></div>
+      <div class="stat"><div class="stat-val">${totalH.toFixed(1)} h</div><div class="stat-lbl">Heures travaux</div></div>
+      <div class="stat"><div class="stat-val">${sorted.length}</div><div class="stat-lbl">Types d'activités</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Activité / Machine</th><th>Interv.</th><th>Heures</th><th>GNR</th><th>L/h moy.</th><th>Part %</th></tr></thead>
+      <tbody>
+        ${rows}
+        <tr class="total">
+          <td>TOTAL</td><td>${totalInterv}</td><td>${totalH.toFixed(1)} h</td>
+          <td>${totalGNRTrav>0?totalGNRTrav.toFixed(0)+' L':'—'}</td><td>—</td><td>100 %</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  _openPrintWindow(`Récap GNR — ${yearLabel}`, html);
 }
 
 // ===================== PWA INSTALL =====================
