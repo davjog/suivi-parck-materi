@@ -535,7 +535,8 @@
     <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
     <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
     <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub">☁ GitHub</button>
+    <button class="btn btn-sm" onclick="openGdriveModal()" title="Sauvegarder sur Google Drive" style="background:#4285f4;color:#fff;border-color:#4285f4;">▲ Drive</button>
+    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
   </div>
 </header>
 
@@ -1156,6 +1157,39 @@
     <div class="modal-footer">
       <button class="btn" onclick="downloadInvoiceFromViewer()">⬇ Télécharger</button>
       <button class="btn btn-danger" onclick="closeModal('modal-invoice-viewer')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GOOGLE DRIVE BACKUP -->
+<div class="modal-overlay" id="modal-gdrive">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">▲ Sauvegarde Google Drive</div>
+      <button class="modal-close" onclick="closeModal('modal-gdrive')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.6;">
+        Sauvegarde dans votre <strong>Google Drive</strong> personnel.<br>
+        <strong>Étapes (1 seule fois) :</strong><br>
+        1. <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--accent);">console.cloud.google.com</a> → Nouveau projet<br>
+        2. API &amp; Services → Activer <strong>Google Drive API</strong><br>
+        3. Identifiants → Créer <strong>ID client OAuth 2.0</strong> (type : Application Web)<br>
+        4. Origines autorisées : collez l'URL de cette page<br>
+        5. Copiez l'<strong>ID client</strong> ci-dessous
+      </p>
+      <div class="form-group">
+        <label class="form-label">Client ID OAuth 2.0</label>
+        <input class="form-input" id="gdrive-client-id" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off">
+      </div>
+      <div id="gdrive-size-info" style="font-size:11px;color:var(--text-dim);margin-top:2px;"></div>
+      <div id="gdrive-status" style="font-size:13px;min-height:20px;margin-top:8px;font-weight:500;"></div>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px;">
+      <button class="btn btn-danger" onclick="closeModal('modal-gdrive')">Fermer</button>
+      <button class="btn" style="background:#4285f4;color:#fff;" onclick="connectGoogleDrive()">🔑 Connexion Google</button>
+      <button class="btn" style="background:#24292f;color:#fff;" id="gdrive-restore-btn" onclick="restoreFromGdrive()" disabled>⬇ Restaurer</button>
+      <button class="btn" id="gdrive-save-btn" onclick="saveToGdrive()" disabled>▲ Sauvegarder</button>
     </div>
   </div>
 </div>
@@ -2868,6 +2902,162 @@ function importData(event) {
   };
   reader.readAsText(file);
   event.target.value = ''; // reset input
+}
+
+// ===================== GOOGLE DRIVE BACKUP =====================
+const GDRIVE_CLIENT_ID_KEY = 'gdrive_client_id';
+const GDRIVE_FILE_NAME = 'suivi-materiel-backup.json';
+const GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let _gAccessToken = null;
+let _gTokenClient = null;
+
+function openGdriveModal() {
+  const saved = localStorage.getItem(GDRIVE_CLIENT_ID_KEY) || '';
+  document.getElementById('gdrive-client-id').value = saved;
+  document.getElementById('gdrive-status').textContent = '';
+  const kb = Math.round(new Blob([JSON.stringify(DB)]).size / 1024);
+  const si = document.getElementById('gdrive-size-info');
+  if (si) si.textContent = `Données : ${kb} KB${kb>5000?' — photos exclues auto':''}`;
+  // Restore button state if already connected
+  const connected = !!_gAccessToken;
+  document.getElementById('gdrive-save-btn').disabled = !connected;
+  document.getElementById('gdrive-restore-btn').disabled = !connected;
+  if (connected) _gdriveStatus('✓ Déjà connecté à Google Drive', true);
+  openModal('modal-gdrive');
+}
+
+function _gdriveStatus(msg, state) {
+  const el = document.getElementById('gdrive-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = state === true ? '#2e7d32' : state === false ? '#c62828' : '#555';
+}
+
+function _loadGIS() {
+  return new Promise((resolve, reject) => {
+    if (window.google?.accounts?.oauth2) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true; s.defer = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Impossible de charger Google Identity Services'));
+    document.head.appendChild(s);
+  });
+}
+
+async function connectGoogleDrive() {
+  const clientId = document.getElementById('gdrive-client-id').value.trim();
+  if (!clientId) { _gdriveStatus('⚠ Client ID requis.', false); return; }
+  localStorage.setItem(GDRIVE_CLIENT_ID_KEY, clientId);
+  _gdriveStatus('Chargement Google en cours…');
+  try {
+    await _loadGIS();
+    _gTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: GDRIVE_SCOPE,
+      callback: (response) => {
+        if (response.error) {
+          _gdriveStatus('✗ Erreur Google : ' + response.error + (response.error_description ? ' — ' + response.error_description : ''), false);
+          return;
+        }
+        _gAccessToken = response.access_token;
+        document.getElementById('gdrive-save-btn').disabled = false;
+        document.getElementById('gdrive-restore-btn').disabled = false;
+        _gdriveStatus('✓ Connecté à Google Drive — vous pouvez sauvegarder', true);
+      }
+    });
+    _gTokenClient.requestAccessToken({ prompt: 'consent' });
+  } catch (e) {
+    _gdriveStatus('✗ ' + e.message, false);
+  }
+}
+
+async function _gdriveRequest(url, options = {}) {
+  if (!options.headers) options.headers = {};
+  options.headers['Authorization'] = `Bearer ${_gAccessToken}`;
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    _gAccessToken = null;
+    document.getElementById('gdrive-save-btn').disabled = true;
+    document.getElementById('gdrive-restore-btn').disabled = true;
+    throw new Error('Session expirée — reconnectez-vous (401)');
+  }
+  return res;
+}
+
+async function _gdriveFind() {
+  const res = await _gdriveRequest(
+    `https://www.googleapis.com/drive/v3/files?q=name%3D'${encodeURIComponent(GDRIVE_FILE_NAME)}'+and+trashed%3Dfalse&fields=files(id,name,modifiedTime)&spaces=drive`
+  );
+  const data = await res.json();
+  return data.files?.[0] || null;
+}
+
+async function saveToGdrive() {
+  if (!_gAccessToken) { _gdriveStatus('⚠ Connectez-vous d\'abord.', false); return; }
+  _gdriveStatus('Sauvegarde en cours…');
+  try {
+    let jsonStr = JSON.stringify(DB, null, 2);
+    const kb = Math.round(new Blob([jsonStr]).size / 1024);
+    let note = ` (${kb} KB)`;
+    if (kb > 5000) {
+      jsonStr = JSON.stringify(_dbWithoutPhotos(DB), null, 2);
+      note = ` (photos exclues, ${Math.round(new Blob([jsonStr]).size/1024)} KB)`;
+    }
+    const existing = await _gdriveFind();
+    const meta = JSON.stringify({ name: GDRIVE_FILE_NAME, mimeType: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([meta], { type: 'application/json' }));
+    form.append('file', new Blob([jsonStr], { type: 'application/json' }));
+    let url, method;
+    if (existing) {
+      url = `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`;
+      method = 'PATCH';
+    } else {
+      url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+      method = 'POST';
+    }
+    const res = await _gdriveRequest(url, { method, body: form });
+    if (res.ok) {
+      _gdriveStatus(`✓ Sauvegardé sur Google Drive !${note}`, true);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      _gdriveStatus(`✗ Erreur ${res.status} : ${err.error?.message || 'inconnue'}`, false);
+    }
+  } catch (e) {
+    _gdriveStatus('✗ ' + e.message, false);
+  }
+}
+
+async function restoreFromGdrive() {
+  if (!_gAccessToken) { _gdriveStatus('⚠ Connectez-vous d\'abord.', false); return; }
+  _gdriveStatus('Recherche du fichier sur Drive…');
+  try {
+    const file = await _gdriveFind();
+    if (!file) { _gdriveStatus('✗ Fichier introuvable — sauvegardez d\'abord', false); return; }
+    _gdriveStatus('Téléchargement en cours…');
+    const res = await _gdriveRequest(
+      `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`
+    );
+    if (!res.ok) { _gdriveStatus(`✗ Erreur ${res.status}`, false); return; }
+    const imported = await res.json();
+    if (!imported.tractors) throw new Error('Format de fichier invalide');
+    const dated = file.modifiedTime ? ` (modifié le ${new Date(file.modifiedTime).toLocaleString('fr')})` : '';
+    if (!confirm(`Restaurer ${imported.tractors.length} machine(s) depuis Google Drive${dated} ?\nLes données actuelles seront remplacées.`)) return;
+    DB = imported;
+    if (!DB.travaux_log) DB.travaux_log = [];
+    if (!DB.vehicles) DB.vehicles = [];
+    if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
+    if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
+    saveDB();
+    selectedTractorId = null;
+    document.getElementById('detail-panel-container').innerHTML = '';
+    renderFleet();
+    closeModal('modal-gdrive');
+    _gdriveStatus('✓ Restauré depuis Google Drive', true);
+  } catch (e) {
+    _gdriveStatus('✗ ' + e.message, false);
+  }
 }
 
 // ===================== GITHUB GIST BACKUP =====================
