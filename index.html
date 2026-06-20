@@ -1068,17 +1068,23 @@
         </div>
         <div class="form-group" style="grid-column:1/-1;">
           <label class="form-label">Type d'entretien</label>
-          <select class="form-input" id="vent-type">
+          <select class="form-input" id="vent-type" onchange="toggleNatureField()">
             <option value="vidange">Vidange + filtre</option>
             <option value="revision">Révision générale</option>
             <option value="pneus">Pneus</option>
-            <option value="freins">Freins</option>
-            <option value="courroie">Courroie distribution</option>
+            <option value="frein_av">Plaquettes de frein AV</option>
+            <option value="frein_ar">Plaquettes de frein AR</option>
+            <option value="freins">Freins (général)</option>
+            <option value="courroie">Courroie de distribution</option>
             <option value="batterie">Batterie</option>
             <option value="climatisation">Climatisation</option>
             <option value="controle_technique">Contrôle technique</option>
-            <option value="autre">Autre</option>
+            <option value="autre">Autre…</option>
           </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;display:none;" id="vent-nature-group">
+          <label class="form-label">Nature des travaux <span style="color:#c62828;">*</span></label>
+          <input class="form-input" id="vent-nature" placeholder="Décrivez les travaux effectués…">
         </div>
         <div class="form-group">
           <label class="form-label">Coût (€)</label>
@@ -2540,15 +2546,16 @@ function renderVehicleDetail(v) {
       }).join('');
 
   // Entretien labels
-  const typeLabelsV = { vidange:'Vidange', revision:'Révision', pneus:'Pneus', freins:'Freins',
-    courroie:'Courroie', batterie:'Batterie', climatisation:'Climatisation',
+  const typeLabelsV = { vidange:'Vidange', revision:'Révision', pneus:'Pneus',
+    frein_av:'Frein AV', frein_ar:'Frein AR', freins:'Freins',
+    courroie:'Courroie distrib.', batterie:'Batterie', climatisation:'Climatisation',
     controle_technique:'CT', autre:'Autre' };
   const entretiensHtml = entretiens.length === 0
     ? `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Aucun entretien enregistré</div>`
     : entretiens.map(e => `<div class="log-entry" style="flex-wrap:wrap;gap:6px;">
         <span class="log-date">${e.date}</span>
         <span class="log-hours">${e.km.toLocaleString('fr')} km</span>
-        <span class="log-desc" style="flex:1;">${typeLabelsV[e.type]||e.type}${e.notes?' — '+e.notes:''}${e.cost?' · '+e.cost.toFixed(2)+'€':''}</span>
+        <span class="log-desc" style="flex:1;">${e.type==='autre'&&e.nature?e.nature:typeLabelsV[e.type]||e.type}${e.notes?' — '+e.notes:''}${e.cost?' · '+e.cost.toFixed(2)+'€':''}</span>
         ${e.invoicePhoto ? `<button class="btn btn-sm" style="padding:2px 8px;" onclick="viewInvoice('${e.id}','vent')">🧾</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteEntretienV('${e.id}','${v.id}')">×</button>
       </div>`).join('');
@@ -2586,6 +2593,8 @@ function openEntretienVehicle(e, id) {
   document.getElementById('vent-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('vent-km').value = v.km;
   document.getElementById('vent-type').value = 'vidange';
+  document.getElementById('vent-nature').value = '';
+  document.getElementById('vent-nature-group').style.display = 'none';
   document.getElementById('vent-cost').value = '';
   document.getElementById('vent-notes').value = '';
   document.getElementById('vent-invoice-data').value = '';
@@ -2595,15 +2604,24 @@ function openEntretienVehicle(e, id) {
   openModal('modal-entretien-vehicle');
 }
 
+function toggleNatureField() {
+  const type = document.getElementById('vent-type').value;
+  const grp = document.getElementById('vent-nature-group');
+  if (grp) grp.style.display = type === 'autre' ? 'block' : 'none';
+}
+
 function saveEntretienVehicle() {
   const v = DB.vehicles.find(x => x.id === currentVehicleId);
   const km = parseInt(document.getElementById('vent-km').value) || v.km;
+  const type = document.getElementById('vent-type').value;
+  const nature = type === 'autre' ? document.getElementById('vent-nature').value.trim() : '';
   DB.entretiens_vehicules.push({
     id: 'EV'+Date.now(),
     vehicleId: currentVehicleId,
     date: document.getElementById('vent-date').value,
     km,
-    type: document.getElementById('vent-type').value,
+    type,
+    nature,
     cost: parseFloat(document.getElementById('vent-cost').value) || 0,
     notes: document.getElementById('vent-notes').value.trim(),
     invoicePhoto: document.getElementById('vent-invoice-data').value || null
