@@ -3267,13 +3267,16 @@ async function saveToGithub() {
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
   _ghStatus('Sauvegarde en cours…');
   try {
-    let jsonStr = JSON.stringify(DB, null, 2);
+    // Supprimer les photos AVANT de sérialiser pour éviter un payload géant sur mobile
+    const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
+                      (DB.operations||[]).some(o=>o.invoicePhoto) ||
+                      (DB.vehicles||[]).some(v=>v.photo) ||
+                      (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
+    const dbToSave = hasPhotos ? _dbWithoutPhotos(DB) : DB;
+    const jsonStr = JSON.stringify(dbToSave); // pas d'indentation = plus léger
     const kb = Math.round(new Blob([jsonStr]).size / 1024);
-    let note = ` (${kb} KB)`;
-    if (kb > 5000) {
-      jsonStr = JSON.stringify(_dbWithoutPhotos(DB), null, 2);
-      note = ` (photos exclues, ${Math.round(new Blob([jsonStr]).size / 1024)} KB)`;
-    }
+    const note = hasPhotos ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
+    if (kb > 10000) { _ghStatus('⚠ Données trop volumineuses pour GitHub Gist (> 10 Mo)', false); return; }
     const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' };
     const payload = {
       description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`,
@@ -3305,7 +3308,7 @@ async function saveToGithub() {
       _ghStatus(`✗ Erreur ${res.status} : ${err.message || 'inconnue'}`, false);
     }
   } catch (e) {
-    _ghStatus('✗ Erreur réseau : ' + e.message, false);
+    _ghStatus('✗ Erreur réseau : ' + e.message + ' — essayez en WiFi ou vérifiez votre connexion.', false);
   }
 }
 
