@@ -513,16 +513,61 @@
     border: 3px solid #fff; background: rgba(255,255,255,0.15);
     border-radius: 3px; cursor: pointer; touch-action: none;
   }
+  /* ── MOBILE MENU ── */
+  .mobile-menu-wrap { display: none; position: relative; }
+  .mobile-menu {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+    z-index: 500; min-width: 170px; overflow: hidden;
+  }
+  .mobile-menu.open { display: block; animation: modal-pop 0.14s ease; }
+  .mobile-menu button, .mobile-menu label {
+    display: flex; align-items: center; gap: 9px;
+    padding: 13px 16px; width: 100%; text-align: left;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
+    border: none; background: none; color: var(--text);
+    cursor: pointer; transition: background 0.1s;
+  }
+  .mobile-menu button:hover, .mobile-menu label:hover { background: var(--surface2); }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
     header { padding: 0 10px; gap: 6px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
-    main { padding: 16px 12px; }
+    main { padding: 14px 10px; }
     .logo span { display: none; }
     .fleet-grid { grid-template-columns: 1fr; }
     .section-title { font-size: 17px; }
-    .panel-content { padding: 14px; }
+    .panel-content { padding: 12px; }
     .nav-tabs { order: 3; width: 100%; }
+    .nav-tab { padding: 9px 12px; font-size: 10px; }
     .header-actions { flex-shrink: 0; }
+
+    /* Actions header → menu mobile */
+    #btn-export, #btn-import, #btn-github { display: none !important; }
+    .mobile-menu-wrap { display: block; }
+
+    /* Log entries → 2 lignes */
+    .log-entry { flex-wrap: wrap; gap: 4px 10px; }
+    .log-date { min-width: auto; order: 1; }
+    .log-hours { min-width: auto; order: 2; }
+    .log-desc { width: 100%; flex: none; order: 3; }
+    .log-meta { width: 100%; order: 4; }
+
+    /* Pleins (pv-row) → 2 colonnes */
+    .pv-row { grid-template-columns: 1fr 1fr; font-size: 11px; }
+    .pv-row-head { display: none; }
+
+    /* Card / modal footer wrap */
+    .card-footer { flex-wrap: wrap; }
+    .modal-footer { flex-wrap: wrap; }
+    .modal-footer .btn { flex: 1; justify-content: center; }
+
+    /* Tableaux scrollables */
+    .panel-section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Tap targets plus grands */
+    .fleet-header .btn { min-height: 40px; }
   }
 </style>
 </head>
@@ -539,9 +584,17 @@
   </div>
   <div class="header-actions">
     <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
-    <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
-    <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
+    <button class="btn btn-sm" id="btn-export" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
+    <label class="btn btn-sm" id="btn-import" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
+    <button class="btn btn-sm" id="btn-github" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
+    <div class="mobile-menu-wrap">
+      <button class="btn btn-sm" onclick="toggleMobileMenu(event)" aria-label="Plus d'actions" title="Actions">⋯</button>
+      <div class="mobile-menu" id="mobile-menu">
+        <button onclick="exportData();closeMobileMenu()">💾 Exporter</button>
+        <label style="cursor:pointer;">📂 Importer<input type="file" accept=".json" onchange="importData(event);closeMobileMenu()" style="display:none;"></label>
+        <button onclick="openGithubModal();closeMobileMenu()">☁ GitHub</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -3556,6 +3609,16 @@ function installApp() {
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+// ── MOBILE MENU ──
+function toggleMobileMenu(e) {
+  e.stopPropagation();
+  document.getElementById('mobile-menu').classList.toggle('open');
+}
+function closeMobileMenu() {
+  document.getElementById('mobile-menu').classList.remove('open');
+}
+document.addEventListener('click', () => closeMobileMenu());
 }
 </script>
 </body>
