@@ -1,4 +1,4 @@
-const CACHE = 'suivi-materiel-v3';
+const CACHE = 'suivi-materiel-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -25,6 +25,12 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+
+  // Ne pas intercepter les requetes vers des origines externes (API GitHub, fonts...)
+  // Sur Android Chrome, le SW peut supprimer les headers Authorization sur ces requetes
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return;
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
