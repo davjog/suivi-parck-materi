@@ -3638,6 +3638,7 @@ function installApp() {
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 
 // ── MOBILE MENU ──
 function toggleMobileMenu(e) {
