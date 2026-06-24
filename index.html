@@ -1269,7 +1269,7 @@
     <div class="modal-body">
       <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;">
         Sauvegarde dans un <strong>GitHub Gist privé</strong> — pas de dépôt nécessaire.<br>
-        Créez un token sur <strong>github.com → Settings → Developer settings → Tokens (classic)</strong> avec le scope <code>gist</code>.<br>
+        Créez un <strong>Classic PAT</strong> sur github.com → Settings → Developer settings → <strong>Personal access tokens → Tokens (classic)</strong> avec le scope <code>gist</code>. ⚠ Les fine-grained tokens ne fonctionnent pas avec Gist.<br>
         La première sauvegarde crée le Gist, les suivantes le mettent à jour.
       </p>
       <div class="form-group">
@@ -3292,8 +3292,8 @@ async function saveToGithub() {
       _ghStatus(`✓ Sauvegardé !${note}`, true);
     } else if (res.status === 401) {
       _ghStatus('✗ Token invalide ou expiré (401) — vérifiez le token', false);
-    } else if (res.status === 403) {
-      _ghStatus('✗ Accès refusé (403) — le token doit avoir le scope "gist"', false);
+    } else if (res.status === 403 || res.status === 422) {
+      _ghStatus('✗ Accès refusé — utilisez un Classic PAT (ghp_...) avec scope gist. Les fine-grained PAT ne supportent pas Gist.', false);
     } else if (res.status === 404 && gistId) {
       // Gist was deleted, clear ID and retry as new
       document.getElementById('gh-gist-id').value = '';
@@ -3330,7 +3330,7 @@ async function restoreFromGithub() {
     // content may be truncated — fetch raw_url if needed
     let content = gist.files[fileKey].content;
     if (gist.files[fileKey].truncated) {
-      const raw = await fetch(gist.files[fileKey].raw_url);
+      const raw = await fetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' } });
       content = await raw.text();
     }
     const imported = JSON.parse(content);
