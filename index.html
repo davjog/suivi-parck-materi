@@ -3201,6 +3201,32 @@ async function restoreFromGdrive() {
 
 // ===================== GITHUB GIST BACKUP =====================
 const GH_SETTINGS_KEY = 'gh_backup_settings';
+const GH_SETTINGS_KEY = 'gh_backup_settings';
+
+// Fallback XHR pour Android où fetch() POST cross-origin peut échouer
+function _ghFetch(url, options) {
+  return fetch(url, options).catch(() =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(options.method || 'GET', url);
+      const hdrs = options.headers || {};
+      for (const [k, v] of Object.entries(hdrs)) xhr.setRequestHeader(k, v);
+      xhr.timeout = 30000;
+      xhr.onload = function() {
+        const status = this.status;
+        const text = this.responseText;
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => { try { return Promise.resolve(JSON.parse(text)); } catch(e2) { return Promise.reject(e2); } }
+        });
+      };
+      xhr.onerror  = () => reject(new TypeError('Erreur réseau'));
+      xhr.ontimeout = () => reject(new TypeError('Délai dépassé'));
+      xhr.send(options.body || null);
+    })
+  );
+}
 
 function openGithubModal() {
   const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
@@ -3245,7 +3271,7 @@ async function testGithubConnection() {
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
   _ghStatus('Test en cours…');
   try {
-    const res = await fetch('https://api.github.com/user', {
+    const res = await _ghFetch('https://api.github.com/user', {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
     });
     if (res.ok) {
@@ -3286,7 +3312,7 @@ async function saveToGithub() {
     let url = 'https://api.github.com/gists';
     let method = 'POST';
     if (gistId) { url = `https://api.github.com/gists/${gistId}`; method = 'PATCH'; }
-    const res = await fetch(url, { method, headers, body: JSON.stringify(payload) });
+    const res = await _ghFetch(url, { method, headers, body: JSON.stringify(payload) });
     if (res.ok) {
       const gist = await res.json();
       gistId = gist.id;
@@ -3319,7 +3345,7 @@ async function restoreFromGithub() {
   if (!gistId) { _ghStatus('⚠ ID du Gist requis pour restaurer.', false); return; }
   _ghStatus('Téléchargement en cours…');
   try {
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+    const res = await _ghFetch(`https://api.github.com/gists/${gistId}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
     });
     if (!res.ok) {
@@ -3333,7 +3359,7 @@ async function restoreFromGithub() {
     // content may be truncated — fetch raw_url if needed
     let content = gist.files[fileKey].content;
     if (gist.files[fileKey].truncated) {
-      const raw = await fetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' } });
+      const raw = await _ghFetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' } });
       content = await raw.text();
     }
     const imported = JSON.parse(content);
