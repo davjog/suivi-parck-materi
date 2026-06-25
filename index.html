@@ -540,34 +540,20 @@
     .section-title { font-size: 17px; }
     .panel-content { padding: 12px; }
     .nav-tabs { order: 3; width: 100%; }
-    .nav-tab { padding: 9px 12px; font-size: 10px; }
+    .nav-tab { padding: 9px 12px; }
     .header-actions { flex-shrink: 0; }
-
-    /* Actions header → menu mobile */
     #btn-export, #btn-import, #btn-github { display: none !important; }
     .mobile-menu-wrap { display: block; }
-
-    /* Log entries → 2 lignes */
     .log-entry { flex-wrap: wrap; gap: 4px 10px; }
     .log-date { min-width: auto; order: 1; }
     .log-hours { min-width: auto; order: 2; }
     .log-desc { width: 100%; flex: none; order: 3; }
     .log-meta { width: 100%; order: 4; }
-
-    /* Pleins (pv-row) → 2 colonnes */
     .pv-row { grid-template-columns: 1fr 1fr; font-size: 11px; }
     .pv-row-head { display: none; }
-
-    /* Card / modal footer wrap */
     .card-footer { flex-wrap: wrap; }
     .modal-footer { flex-wrap: wrap; }
-    .modal-footer .btn { flex: 1; justify-content: center; }
-
-    /* Tableaux scrollables */
     .panel-section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-
-    /* Tap targets plus grands */
-    .fleet-header .btn { min-height: 40px; }
   }
 </style>
 </head>
@@ -583,12 +569,12 @@
     <button class="nav-tab" onclick="showPage('recap')">Récap GNR</button>
   </div>
   <div class="header-actions">
-    <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
-    <button class="btn btn-sm" id="btn-export" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
-    <label class="btn btn-sm" id="btn-import" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" id="btn-github" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
+    <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer">📲 Installer</button>
+    <button class="btn btn-sm" id="btn-export" onclick="exportData()" title="Exporter">💾 Export</button>
+    <label class="btn btn-sm" id="btn-import" style="cursor:pointer;" title="Importer">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
+    <button class="btn btn-sm" id="btn-github" onclick="openGithubModal()" title="GitHub Gist">☁ GitHub</button>
     <div class="mobile-menu-wrap">
-      <button class="btn btn-sm" onclick="toggleMobileMenu(event)" aria-label="Plus d'actions" title="Actions">⋯</button>
+      <button class="btn btn-sm" onclick="toggleMobileMenu(event)" title="Actions">⋯</button>
       <div class="mobile-menu" id="mobile-menu">
         <button onclick="exportData();closeMobileMenu()">💾 Exporter</button>
         <label style="cursor:pointer;">📂 Importer<input type="file" accept=".json" onchange="importData(event);closeMobileMenu()" style="display:none;"></label>
@@ -596,6 +582,7 @@
       </div>
     </div>
   </div>
+</header>
 </header>
 
 <main>
@@ -1269,7 +1256,7 @@
     <div class="modal-body">
       <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.5;">
         Sauvegarde dans un <strong>GitHub Gist privé</strong> — pas de dépôt nécessaire.<br>
-        Créez un <strong>Classic PAT</strong> sur github.com → Settings → Developer settings → <strong>Personal access tokens → Tokens (classic)</strong> avec le scope <code>gist</code>. ⚠ Les fine-grained tokens ne fonctionnent pas avec Gist.<br>
+        Créez un token sur <strong>github.com → Settings → Developer settings → Tokens (classic)</strong> avec le scope <code>gist</code>.<br>
         La première sauvegarde crée le Gist, les suivantes le mettent à jour.
       </p>
       <div class="form-group">
@@ -3203,31 +3190,27 @@ async function restoreFromGdrive() {
 const GH_SETTINGS_KEY = 'gh_backup_settings';
 const GH_SETTINGS_KEY = 'gh_backup_settings';
 
-// Fallback XHR pour Android où fetch() POST cross-origin peut échouer
+// Fallback XHR pour Android (fetch POST cross-origin peut echouer)
 function _ghFetch(url, options) {
-  return fetch(url, options).catch(() =>
-    new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+  return fetch(url, options).catch(function() {
+    return new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
       xhr.open(options.method || 'GET', url);
-      const hdrs = options.headers || {};
-      for (const [k, v] of Object.entries(hdrs)) xhr.setRequestHeader(k, v);
+      var hdrs = options.headers || {};
+      Object.keys(hdrs).forEach(function(k) { xhr.setRequestHeader(k, hdrs[k]); });
       xhr.timeout = 30000;
       xhr.onload = function() {
-        const status = this.status;
-        const text = this.responseText;
-        resolve({
-          ok: status >= 200 && status < 300,
-          status,
-          json: () => { try { return Promise.resolve(JSON.parse(text)); } catch(e2) { return Promise.reject(e2); } }
+        var status = this.status, text = this.responseText;
+        resolve({ ok: status >= 200 && status < 300, status: status,
+          json: function() { try { return Promise.resolve(JSON.parse(text)); } catch(e) { return Promise.reject(e); } }
         });
       };
-      xhr.onerror  = () => reject(new TypeError('Erreur réseau'));
-      xhr.ontimeout = () => reject(new TypeError('Délai dépassé'));
+      xhr.onerror = function() { reject(new TypeError('Erreur réseau')); };
+      xhr.ontimeout = function() { reject(new TypeError('Délai dépassé')); };
       xhr.send(options.body || null);
-    })
-  );
+    });
+  });
 }
-
 function openGithubModal() {
   const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
   document.getElementById('gh-token').value = s.token || '';
@@ -3293,17 +3276,16 @@ async function saveToGithub() {
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
   _ghStatus('Sauvegarde en cours…');
   try {
-    // Supprimer les photos AVANT de sérialiser pour éviter un payload géant sur mobile
-    const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
-                      (DB.operations||[]).some(o=>o.invoicePhoto) ||
-                      (DB.vehicles||[]).some(v=>v.photo) ||
-                      (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
-    const dbToSave = hasPhotos ? _dbWithoutPhotos(DB) : DB;
-    const jsonStr = JSON.stringify(dbToSave); // pas d'indentation = plus léger
-    const kb = Math.round(new Blob([jsonStr]).size / 1024);
-    const note = hasPhotos ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
-    if (kb > 10000) { _ghStatus('⚠ Données trop volumineuses pour GitHub Gist (> 10 Mo)', false); return; }
-    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' };
+    // Strip photos AVANT stringify pour eviter payload 50-100 MB sur mobile
+    var hasPhotos = (DB.tractors||[]).some(function(t){return t.photo;}) ||
+                    (DB.operations||[]).some(function(o){return o.invoicePhoto;}) ||
+                    (DB.vehicles||[]).some(function(v){return v.photo;}) ||
+                    (DB.entretiens_vehicules||[]).some(function(e){return e.invoicePhoto;});
+    var dbToSave = hasPhotos ? _dbWithoutPhotos(DB) : DB;
+    var jsonStr = JSON.stringify(dbToSave);
+    var kb = Math.round(new Blob([jsonStr]).size / 1024);
+    var note = hasPhotos ? " (photos exclues, " + kb + " KB)" : " (" + kb + " KB)";
+    if (kb > 10000) { _ghStatus("Données trop volumineuses pour Gist (> 10 Mo)", false); return; }
     const payload = {
       description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`,
       public: false,
@@ -3321,8 +3303,8 @@ async function saveToGithub() {
       _ghStatus(`✓ Sauvegardé !${note}`, true);
     } else if (res.status === 401) {
       _ghStatus('✗ Token invalide ou expiré (401) — vérifiez le token', false);
-    } else if (res.status === 403 || res.status === 422) {
-      _ghStatus('✗ Accès refusé — utilisez un Classic PAT (ghp_...) avec scope gist. Les fine-grained PAT ne supportent pas Gist.', false);
+    } else if (res.status === 403) {
+      _ghStatus('✗ Accès refusé (403) — le token doit avoir le scope "gist"', false);
     } else if (res.status === 404 && gistId) {
       // Gist was deleted, clear ID and retry as new
       document.getElementById('gh-gist-id').value = '';
@@ -3334,7 +3316,7 @@ async function saveToGithub() {
       _ghStatus(`✗ Erreur ${res.status} : ${err.message || 'inconnue'}`, false);
     }
   } catch (e) {
-    _ghStatus('✗ Erreur réseau : ' + e.message + ' — essayez en WiFi ou vérifiez votre connexion.', false);
+    _ghStatus('✗ Erreur réseau : ' + e.message, false);
   }
 }
 
@@ -3359,7 +3341,7 @@ async function restoreFromGithub() {
     // content may be truncated — fetch raw_url if needed
     let content = gist.files[fileKey].content;
     if (gist.files[fileKey].truncated) {
-      const raw = await _ghFetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' } });
+      const raw = await _ghFetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}` } });
       content = await raw.text();
     }
     const imported = JSON.parse(content);
@@ -3640,15 +3622,15 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
-// ── MOBILE MENU ──
+// Mobile menu
 function toggleMobileMenu(e) {
   e.stopPropagation();
-  document.getElementById('mobile-menu').classList.toggle('open');
+  document.getElementById("mobile-menu").classList.toggle("open");
 }
 function closeMobileMenu() {
-  document.getElementById('mobile-menu').classList.remove('open');
+  document.getElementById("mobile-menu").classList.remove("open");
 }
-document.addEventListener('click', () => closeMobileMenu());
+document.addEventListener("click", function() { closeMobileMenu(); });
 </script>
 </body>
 </html>
