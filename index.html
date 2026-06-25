@@ -513,47 +513,16 @@
     border: 3px solid #fff; background: rgba(255,255,255,0.15);
     border-radius: 3px; cursor: pointer; touch-action: none;
   }
-  /* ── MOBILE MENU ── */
-  .mobile-menu-wrap { display: none; position: relative; }
-  .mobile-menu {
-    display: none; position: absolute; top: calc(100% + 8px); right: 0;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
-    z-index: 500; min-width: 170px; overflow: hidden;
-  }
-  .mobile-menu.open { display: block; animation: modal-pop 0.14s ease; }
-  .mobile-menu button, .mobile-menu label {
-    display: flex; align-items: center; gap: 9px;
-    padding: 13px 16px; width: 100%; text-align: left;
-    font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
-    border: none; background: none; color: var(--text);
-    cursor: pointer; transition: background 0.1s;
-  }
-  .mobile-menu button:hover, .mobile-menu label:hover { background: var(--surface2); }
-
   /* ── RESPONSIVE ── */
   @media (max-width: 640px) {
     header { padding: 0 10px; gap: 6px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
-    main { padding: 14px 10px; }
+    main { padding: 16px 12px; }
     .logo span { display: none; }
     .fleet-grid { grid-template-columns: 1fr; }
     .section-title { font-size: 17px; }
-    .panel-content { padding: 12px; }
+    .panel-content { padding: 14px; }
     .nav-tabs { order: 3; width: 100%; }
-    .nav-tab { padding: 9px 12px; }
     .header-actions { flex-shrink: 0; }
-    #btn-export, #btn-import, #btn-github { display: none !important; }
-    .mobile-menu-wrap { display: block; }
-    .log-entry { flex-wrap: wrap; gap: 4px 10px; }
-    .log-date { min-width: auto; order: 1; }
-    .log-hours { min-width: auto; order: 2; }
-    .log-desc { width: 100%; flex: none; order: 3; }
-    .log-meta { width: 100%; order: 4; }
-    .pv-row { grid-template-columns: 1fr 1fr; font-size: 11px; }
-    .pv-row-head { display: none; }
-    .card-footer { flex-wrap: wrap; }
-    .modal-footer { flex-wrap: wrap; }
-    .panel-section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   }
 </style>
 </head>
@@ -569,20 +538,11 @@
     <button class="nav-tab" onclick="showPage('recap')">Récap GNR</button>
   </div>
   <div class="header-actions">
-    <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer">📲 Installer</button>
-    <button class="btn btn-sm" id="btn-export" onclick="exportData()" title="Exporter">💾 Export</button>
-    <label class="btn btn-sm" id="btn-import" style="cursor:pointer;" title="Importer">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" id="btn-github" onclick="openGithubModal()" title="GitHub Gist">☁ GitHub</button>
-    <div class="mobile-menu-wrap">
-      <button class="btn btn-sm" onclick="toggleMobileMenu(event)" title="Actions">⋯</button>
-      <div class="mobile-menu" id="mobile-menu">
-        <button onclick="exportData();closeMobileMenu()">💾 Exporter</button>
-        <label style="cursor:pointer;">📂 Importer<input type="file" accept=".json" onchange="importData(event);closeMobileMenu()" style="display:none;"></label>
-        <button onclick="openGithubModal();closeMobileMenu()">☁ GitHub</button>
-      </div>
-    </div>
+    <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
+    <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
+    <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
+    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
   </div>
-</header>
 </header>
 
 <main>
@@ -3188,9 +3148,8 @@ async function restoreFromGdrive() {
 
 // ===================== GITHUB GIST BACKUP =====================
 const GH_SETTINGS_KEY = 'gh_backup_settings';
-const GH_SETTINGS_KEY = 'gh_backup_settings';
 
-// Fallback XHR pour Android (fetch POST cross-origin peut echouer)
+// Fallback XHR si fetch POST echoue sur Android
 function _ghFetch(url, options) {
   return fetch(url, options).catch(function() {
     return new Promise(function(resolve, reject) {
@@ -3200,9 +3159,9 @@ function _ghFetch(url, options) {
       Object.keys(hdrs).forEach(function(k) { xhr.setRequestHeader(k, hdrs[k]); });
       xhr.timeout = 30000;
       xhr.onload = function() {
-        var status = this.status, text = this.responseText;
-        resolve({ ok: status >= 200 && status < 300, status: status,
-          json: function() { try { return Promise.resolve(JSON.parse(text)); } catch(e) { return Promise.reject(e); } }
+        var s2 = this.status, t = this.responseText;
+        resolve({ ok: s2 >= 200 && s2 < 300, status: s2,
+          json: function() { try { return Promise.resolve(JSON.parse(t)); } catch(e) { return Promise.reject(e); } }
         });
       };
       xhr.onerror = function() { reject(new TypeError('Erreur réseau')); };
@@ -3211,6 +3170,7 @@ function _ghFetch(url, options) {
     });
   });
 }
+
 function openGithubModal() {
   const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
   document.getElementById('gh-token').value = s.token || '';
@@ -3276,15 +3236,14 @@ async function saveToGithub() {
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
   _ghStatus('Sauvegarde en cours…');
   try {
-    // Strip photos AVANT stringify pour eviter payload 50-100 MB sur mobile
-    var hasPhotos = (DB.tractors||[]).some(function(t){return t.photo;}) ||
-                    (DB.operations||[]).some(function(o){return o.invoicePhoto;}) ||
-                    (DB.vehicles||[]).some(function(v){return v.photo;}) ||
-                    (DB.entretiens_vehicules||[]).some(function(e){return e.invoicePhoto;});
-    var dbToSave = hasPhotos ? _dbWithoutPhotos(DB) : DB;
-    var jsonStr = JSON.stringify(dbToSave);
-    var kb = Math.round(new Blob([jsonStr]).size / 1024);
-    var note = hasPhotos ? " (photos exclues, " + kb + " KB)" : " (" + kb + " KB)";
+    // Strip photos AVANT serialize pour eviter payload 100 MB sur Android
+    const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
+                      (DB.operations||[]).some(o=>o.invoicePhoto) ||
+                      (DB.vehicles||[]).some(v=>v.photo) ||
+                      (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
+    const jsonStr = JSON.stringify(hasPhotos ? _dbWithoutPhotos(DB) : DB);
+    const kb = Math.round(new Blob([jsonStr]).size / 1024);
+    const note = hasPhotos ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
     if (kb > 10000) { _ghStatus("Données trop volumineuses pour Gist (> 10 Mo)", false); return; }
     const payload = {
       description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`,
@@ -3621,16 +3580,6 @@ function installApp() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
-
-// Mobile menu
-function toggleMobileMenu(e) {
-  e.stopPropagation();
-  document.getElementById("mobile-menu").classList.toggle("open");
-}
-function closeMobileMenu() {
-  document.getElementById("mobile-menu").classList.remove("open");
-}
-document.addEventListener("click", function() { closeMobileMenu(); });
 </script>
 </body>
 </html>
