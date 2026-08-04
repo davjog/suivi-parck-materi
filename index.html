@@ -1346,166 +1346,12 @@ function loadDB() {
   if (!DB.vehicles) DB.vehicles = [];
   if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
   if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
-  if (!DB.deletions) DB.deletions = {};
-  DB = _normalizeDB(DB);
 }
-
 
 function saveDB() {
   localStorage.setItem('tractorlog_v2', JSON.stringify(DB));
-  _ghDirty = true;
-  if (!_ghSyncing) _ghScheduleSync();
-}
-// ===================== SYNC AUTO GITHUB (fusion multi-appareils) =====================
-const _SYNC_ARRAYS = ['tractors','operations','pleins','travaux_log','vehicles','pleins_vehicules','entretiens_vehicules'];
-const _PHOTO_FIELDS = { tractors:['photo'], operations:['invoicePhoto'], vehicles:['photo'], entretiens_vehicules:['invoicePhoto'] };
-let _ghDirty = false, _ghSyncing = false, _ghAutoTimer = null;
-
-function nowISO(){ return new Date().toISOString(); }
-function _tsFromId(id){
-  if(id==null) return new Date(0).toISOString();
-  const n = parseInt(String(id).replace(/^\D+/,''),10);
-  return isNaN(n) ? new Date(0).toISOString() : new Date(n).toISOString();
-}
-function _recTs(r){ return (r && r.updatedAt) ? r.updatedAt : _tsFromId(r && r.id); }
-
-function _emptyDB(){
-  return { tractors:[], operations:[], pleins:[], travaux_log:[], vehicles:[], pleins_vehicules:[], entretiens_vehicules:[], deletions:{}, parkLastGNRAlertAt:0 };
-}
-function _normalizeDB(db){
-  const d = Object.assign(_emptyDB(), db||{});
-  _SYNC_ARRAYS.forEach(k=>{
-    if(!Array.isArray(d[k])) d[k] = [];
-    d[k] = d[k].map(r => (r && r.updatedAt) ? r : Object.assign({}, r, { updatedAt: _tsFromId(r && r.id) }));
-  });
-  if(!d.deletions || typeof d.deletions !== 'object') d.deletions = {};
-  if(typeof d.parkLastGNRAlertAt !== 'number') d.parkLastGNRAlertAt = 0;
-  return d;
 }
 
-function _recordDeletion(arrKey, id){
-  if(!DB.deletions) DB.deletions = {};
-  if(!DB.deletions[arrKey]) DB.deletions[arrKey] = {};
-  DB.deletions[arrKey][id] = nowISO();
-}
-
-function _mergeDelMap(a, b){
-  const out = Object.assign({}, a||{});
-  Object.entries(b||{}).forEach(([id,ts])=>{ if(!out[id] || ts > out[id]) out[id] = ts; });
-  return out;
-}
-function _mergeArray(localArr, remoteArr, del, photoFields){
-  const map = new Map();
-  (localArr||[]).forEach(r=>{ if(r && r.id!=null) map.set(r.id, r); });
-  (remoteArr||[]).forEach(r=>{
-    if(!r || r.id==null) return;
-    const ex = map.get(r.id);
-    if(!ex){ map.set(r.id, r); return; }
-    if(_recTs(r) > _recTs(ex)){
-      const win = Object.assign({}, r);
-      (photoFields||[]).forEach(f=>{ if(!win[f] && ex[f]) win[f] = ex[f]; }); // conserve la photo locale
-      map.set(r.id, win);
-    }
-  });
-  const out = [];
-  map.forEach((rec, id)=>{
-    const dts = del && del[id];
-    if(dts && dts >= _recTs(rec)) return; // supprimé après la dernière modif → on retire
-    out.push(rec);
-  });
-  return out;
-}
-function _mergeDB(localDB, remoteDB){
-  const merged = {}; const del = {};
-  _SYNC_ARRAYS.forEach(k=>{ del[k] = _mergeDelMap((localDB.deletions||{})[k], (remoteDB.deletions||{})[k]); });
-  _SYNC_ARRAYS.forEach(k=>{ merged[k] = _mergeArray(localDB[k], remoteDB[k], del[k], _PHOTO_FIELDS[k]||[]); });
-  merged.deletions = del;
-  merged.parkLastGNRAlertAt = Math.max(localDB.parkLastGNRAlertAt||0, remoteDB.parkLastGNRAlertAt||0);
-  return merged;
-}
-function _dbSig(db){
-  const parts = [];
-  _SYNC_ARRAYS.forEach(k=>{
-    (db[k]||[]).forEach(r=> parts.push(k+'#'+r.id+'#'+_recTs(r)));
-    Object.entries((db.deletions||{})[k]||{}).forEach(([id,ts])=> parts.push('del#'+k+'#'+id+'#'+ts));
-  });
-  parts.push('gnr#'+(db.parkLastGNRAlertAt||0));
-  return parts.sort().join('|');
-}
-function _dbHasPhotos(db){
-  return (db.tractors||[]).some(t=>t.photo) || (db.operations||[]).some(o=>o.invoicePhoto)
-      || (db.vehicles||[]).some(v=>v.photo) || (db.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
-}
-
-function _ghCreds(){
-  const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
-  return (s.token && s.gistId) ? s : null;
-}
-async function _ghRead(creds){
-  const headers = { 'Authorization':`Bearer ${creds.token}`, 'Accept':'application/vnd.github+json' };
-  const res = await _ghFetch(`https://api.github.com/gists/${creds.gistId}`, { headers });
-  if(!res.ok) throw new Error('lecture Gist HTTP '+res.status);
-  const gist = await res.json();
-  const key = Object.keys(gist.files||{}).find(k=>k.endsWith('.json'));
-  if(!key) return null;
-  let content = gist.files[key].content;
-  if(gist.files[key].truncated && gist.files[key].raw_url){
-    try{ const raw = await fetch(gist.files[key].raw_url, { headers:{'Authorization':`Bearer ${creds.token}`} }); content = await raw.text(); }catch(e){}
-  }
-  try { return JSON.parse(content); } catch(e){ return null; }
-}
-async function _ghPush(creds, db){
-  const out = _dbHasPhotos(db) ? _dbWithoutPhotos(db) : db;
-  const jsonStr = JSON.stringify(out);
-  const kb = Math.round(new Blob([jsonStr]).size/1024);
-  if(kb > 10000) throw new Error('données trop volumineuses (>10 Mo)');
-  const payload = { description:`Suivi Matériel — ${new Date().toLocaleString('fr')}`, files:{ 'suivi-materiel-backup.json':{ content: jsonStr } } };
-  const headers = { 'Authorization':`Bearer ${creds.token}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' };
-  const res = await _ghFetch(`https://api.github.com/gists/${creds.gistId}`, { method:'PATCH', headers, body: JSON.stringify(payload) });
-  if(!res.ok) throw new Error('écriture Gist HTTP '+res.status);
-}
-
-function _refreshViews(){
-  renderFleet();
-  const active = document.querySelector('.page.active');
-  if(!active) return;
-  if(active.id==='page-alertes') renderAlerts();
-  else if(active.id==='page-historique') renderHistorique();
-  else if(active.id==='page-recap') renderRecap();
-  else if(active.id==='page-vehicules') renderVehicles();
-}
-
-async function githubSync(opts){
-  opts = opts || {};
-  const creds = _ghCreds();
-  if(!creds){ if(opts.manual) _ghStatus('⚠ Renseignez le token + créez le Gist (Sauvegarder) une première fois.', false); return; }
-  if(_ghSyncing){ _ghDirty = true; return; }
-  _ghSyncing = true;
-  let adopted = false;
-  try{
-    _ghDirty = false; // fenêtre propre : toute modif pendant la sync repassera dirty à true
-    const local = _normalizeDB(DB);
-    const remoteRaw = await _ghRead(creds);
-    const remote = (remoteRaw && remoteRaw.tractors !== undefined) ? _normalizeDB(remoteRaw) : _emptyDB();
-    const merged = _mergeDB(local, remote);
-    const sM = _dbSig(merged), sL = _dbSig(local), sR = _dbSig(remote);
-    if(sM !== sL && !_ghDirty){ DB = merged; localStorage.setItem('tractorlog_v2', JSON.stringify(DB)); adopted = true; }
-    if(sM !== sR){ await _ghPush(creds, merged); }
-    if(opts.manual) _ghStatus('✓ Synchronisé avec GitHub', true);
-  }catch(e){
-    _ghDirty = true; // on retentera
-    if(opts.manual) _ghStatus('✗ '+e.message, false); else console.warn('Sync GitHub:', e.message);
-  }finally{
-    _ghSyncing = false;
-    if(adopted) _refreshViews();
-    if(_ghDirty && _ghCreds()) _ghScheduleSync();
-  }
-}
-function _ghScheduleSync(){
-  if(!_ghCreds()) return;
-  if(_ghAutoTimer) clearTimeout(_ghAutoTimer);
-  _ghAutoTimer = setTimeout(()=>{ githubSync(); }, 2500);
-}
 // ===================== PAGES =====================
 function showPage(p) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
@@ -2273,7 +2119,6 @@ function saveTractor() {
   const nextService = parseInt(document.getElementById('new-next-service').value) || null;
   const year = parseInt(document.getElementById('new-year').value) || new Date().getFullYear();
 
-
   let customPlan = {};
   if (model === 'custom') {
     customPlan = {
@@ -2288,27 +2133,18 @@ function saveTractor() {
   DB.tractors.push({
     id: 'T'+Date.now(),
     name, model, year, hours, nextService,
-    lastServiceHours: 0, customPlan, photo,
-    updatedAt: nowISO()
+    lastServiceHours: 0, customPlan, photo
   });
   saveDB();
   closeModal('modal-add-tractor');
   renderFleet();
 }
-lastServiceHours: 0, customPlan, photo,
-    updatedAt: nowISO();
-}
 
 function deleteTractor(id) {
   if (!confirm('Supprimer ce tracteur et tout son historique ?')) return;
-  _recordDeletion('tractors', id);
-  DB.operations.filter(o => o.tractorId === id).forEach(o => _recordDeletion('operations', o.id));
-  DB.pleins.filter(p => p.tractorId === id).forEach(p => _recordDeletion('pleins', p.id));
-  DB.travaux_log.filter(w => w.tractorId === id).forEach(w => _recordDeletion('travaux_log', w.id));
   DB.tractors = DB.tractors.filter(t => t.id !== id);
   DB.operations = DB.operations.filter(o => o.tractorId !== id);
   DB.pleins = DB.pleins.filter(p => p.tractorId !== id);
-  DB.travaux_log = DB.travaux_log.filter(w => w.tractorId !== id);
   if (selectedTractorId === id) {
     selectedTractorId = null;
     document.getElementById('detail-panel-container').innerHTML = '';
@@ -2500,7 +2336,6 @@ function saveEditTractor() {
   t.nextService = parseInt(document.getElementById('edit-next-service').value) || t.nextService;
   const newPhoto = document.getElementById('edit-photo-data').value;
   if (newPhoto) t.photo = newPhoto;
-  t.updatedAt = nowISO();
   saveDB();
   closeModal('modal-edit-tractor');
   renderFleet();
@@ -2531,7 +2366,6 @@ function saveHours() {
     t.nextService = h + interval;
     t.lastServiceHours = h;
   }
-  t.updatedAt = nowISO();
   saveDB();
   closeModal('modal-hours');
   selectTractor(currentOpTractorId);
@@ -2571,7 +2405,7 @@ function saveOperation() {
   const notes = document.getElementById('op-notes').value.trim();
   const cost = parseFloat(document.getElementById('op-cost').value) || 0;
   const invoicePhoto = document.getElementById('op-invoice-data').value || null;
- DB.operations.push({ id:'O'+Date.now(), tractorId:currentOpTractorId, date, hours, types, type:types[0], nature, notes, cost, invoicePhoto, updatedAt: nowISO() });
+  DB.operations.push({ id:'O'+Date.now(), tractorId:currentOpTractorId, date, hours, types, type:types[0], nature, notes, cost, invoicePhoto });
   if (hours > t.hours) t.hours = hours;
   if (types.includes('vidange')) {
     const plan = MAINTENANCE_PLANS[t.model] || MAINTENANCE_PLANS['custom'];
@@ -2580,16 +2414,13 @@ function saveOperation() {
     t.nextService = hours + interval;
     t.lastServiceHours = hours;
   }
- t.updatedAt = nowISO();
-  saveDB(); 
-
+  saveDB();
   closeModal('modal-operation');
   selectTractor(currentOpTractorId);
 }
 
 function deleteOp(opId, tractorId) {
   if (!confirm('Supprimer cette opération ?')) return;
-  _recordDeletion('operations', opId);
   DB.operations = DB.operations.filter(o => o.id !== opId);
   saveDB();
   selectTractor(tractorId);
@@ -2622,8 +2453,8 @@ function savePlein() {
   if (gnr === 0 && adblue === 0) { alert('Veuillez saisir une quantité.'); return; }
 
   const travaux = document.getElementById('plein-travaux').value;
-  DB.pleins.push({ id: 'P'+Date.now(), tractorId: currentOpTractorId, date, hours, gnr, adblue, prix, travaux, updatedAt: nowISO() });
-  if (hours > t.hours) { t.hours = hours; t.updatedAt = nowISO(); }
+  DB.pleins.push({ id: 'P'+Date.now(), tractorId: currentOpTractorId, date, hours, gnr, adblue, prix, travaux });
+  if (hours > t.hours) t.hours = hours;
 
   saveDB();
   closeModal('modal-plein');
@@ -2655,7 +2486,7 @@ function saveTravaux() {
   const type = document.getElementById('tv-type').value;
   const notes = document.getElementById('tv-notes').value.trim();
   if (!date || !type) { alert('Veuillez renseigner la date et le type de travaux.'); return; }
-  DB.travaux_log.push({ id: 'W'+Date.now(), tractorId: currentOpTractorId, date, heures, type, notes, updatedAt: nowISO() });
+  DB.travaux_log.push({ id: 'W'+Date.now(), tractorId: currentOpTractorId, date, heures, type, notes });
   saveDB();
   closeModal('modal-travaux');
   const t = DB.tractors.find(x => x.id === currentOpTractorId);
@@ -2664,7 +2495,6 @@ function saveTravaux() {
 
 function deleteTravauxEntry(wid, tractorId) {
   if (!confirm('Supprimer cet enregistrement de travaux ?')) return;
-  _recordDeletion('travaux_log', wid);
   DB.travaux_log = DB.travaux_log.filter(w => w.id !== wid);
   saveDB();
   selectTractor(tractorId);
@@ -2672,7 +2502,6 @@ function deleteTravauxEntry(wid, tractorId) {
 
 function deletePlein(pleinId, tractorId) {
   if (!confirm('Supprimer ce plein ?')) return;
-  _recordDeletion('pleins', pleinId);
   DB.pleins = DB.pleins.filter(p => p.id !== pleinId);
   saveDB();
   selectTractor(tractorId);
@@ -2917,10 +2746,9 @@ function saveEntretienVehicle() {
     nature,
     cost: parseFloat(document.getElementById('vent-cost').value) || 0,
     notes: document.getElementById('vent-notes').value.trim(),
-   invoicePhoto: document.getElementById('vent-invoice-data').value || null,
-    updatedAt: nowISO()
+    invoicePhoto: document.getElementById('vent-invoice-data').value || null
   });
-  if (km > v.km) { v.km = km; v.updatedAt = nowISO(); }
+  if (km > v.km) v.km = km;
   saveDB();
   closeModal('modal-entretien-vehicle');
   vehicleDetailTab = 'entretien';
@@ -2928,7 +2756,6 @@ function saveEntretienVehicle() {
 }
 
 function deleteEntretienV(id, vehicleId) {
-  _recordDeletion('entretiens_vehicules', id);
   DB.entretiens_vehicules = DB.entretiens_vehicules.filter(e => e.id !== id);
   saveDB();
   renderVehicleDetail(DB.vehicles.find(v => v.id === vehicleId));
@@ -2982,8 +2809,7 @@ function saveVehicle() {
     plate: document.getElementById('nv-plate').value.trim().toUpperCase(),
     year: parseInt(document.getElementById('nv-year').value) || new Date().getFullYear(),
     km: parseInt(document.getElementById('nv-km').value) || 0,
-    photo: document.getElementById('nv-photo-data').value || null,
-    updatedAt: nowISO()
+    photo: document.getElementById('nv-photo-data').value || null
   });
   saveDB();
   closeModal('modal-add-vehicle');
@@ -3025,9 +2851,7 @@ function saveEditVehicle() {
   v.km = parseInt(document.getElementById('ev-km').value) || v.km;
   const newPhoto = document.getElementById('ev-photo-data').value;
   if (newPhoto) v.photo = newPhoto;
-  v.updatedAt = nowISO();
   saveDB();
-  
   closeModal('modal-edit-vehicle');
   renderVehicles();
 }
@@ -3045,12 +2869,8 @@ function deleteVehicle(e, id) {
   e.stopPropagation();
   document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
   if (!confirm('Supprimer ce véhicule et tous ses pleins ?')) return;
-  _recordDeletion('vehicles', id);
-  DB.pleins_vehicules.filter(p => p.vehicleId === id).forEach(p => _recordDeletion('pleins_vehicules', p.id));
-  DB.entretiens_vehicules.filter(en => en.vehicleId === id).forEach(en => _recordDeletion('entretiens_vehicules', en.id));
   DB.vehicles = DB.vehicles.filter(v => v.id !== id);
   DB.pleins_vehicules = DB.pleins_vehicules.filter(p => p.vehicleId !== id);
-  DB.entretiens_vehicules = DB.entretiens_vehicules.filter(en => en.vehicleId !== id);
   if (selectedVehicleId === id) { selectedVehicleId = null; document.getElementById('vehicle-detail-container').innerHTML = ''; }
   saveDB();
   renderVehicles();
@@ -3112,10 +2932,9 @@ function savePleinVehicle() {
     vehicleId: currentVehicleId,
     date: document.getElementById('pv-date').value,
     km, liters, pricePerLiter, total,
-    station: document.getElementById('pv-station').value.trim(),
-    updatedAt: nowISO()
+    station: document.getElementById('pv-station').value.trim()
   });
-  if (km > v.km) { v.km = km; v.updatedAt = nowISO(); }
+  if (km > v.km) v.km = km;
   saveDB();
   closeModal('modal-plein-vehicle');
   renderVehicles();
@@ -3124,26 +2943,13 @@ function savePleinVehicle() {
 // ===================== INIT =====================
 loadDB();
 renderFleet();
-// Synchro auto GitHub : au démarrage + à la mise en arrière-plan
-setTimeout(function(){ if (_ghCreds()) githubSync(); }, 800);
-document.addEventListener('visibilitychange', function(){
-  if (document.visibilityState === 'hidden' && _ghDirty && _ghCreds()) {
-    if (_ghAutoTimer) clearTimeout(_ghAutoTimer);
-    githubSync();
-  }
-});
+
 // ===================== EXPORT / IMPORT =====================
 function resetAllData() {
   if (!confirm('Effacer TOUTES les données (machines, pleins, opérations, travaux) ? Cette action est irréversible.')) return;
-  const del = DB.deletions || {};
-  _SYNC_ARRAYS.forEach(function(k){
-    if (!del[k]) del[k] = {};
-    (DB[k] || []).forEach(function(r){ del[k][r.id] = nowISO(); });
-  });
-  DB = Object.assign(_emptyDB(), { deletions: del });
+  DB = { tractors: [], operations: [], pleins: [], travaux_log: [], parkLastGNRAlertAt: 0 };
   saveDB();
   selectedTractorId = null;
-  selectedVehicleId = null;
   document.getElementById('detail-panel-container').innerHTML = '';
   renderFleet();
 }
@@ -3428,33 +3234,42 @@ async function saveToGithub() {
   const token = document.getElementById('gh-token').value.trim();
   let gistId  = document.getElementById('gh-gist-id').value.trim();
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
-  _ghSave(token, gistId);
-  if (gistId) {
-    // Gist existant → synchronisation par fusion (lit, fusionne, réécrit)
-    _ghStatus('Synchronisation en cours…');
-    await githubSync({ manual: true });
-    return;
-  }
-  // Première fois : création du Gist
-  _ghStatus('Création du Gist…');
+  _ghStatus('Sauvegarde en cours…');
   try {
-    const jsonStr = JSON.stringify(_dbHasPhotos(DB) ? _dbWithoutPhotos(DB) : DB);
+    // Strip photos AVANT serialize pour eviter payload 100 MB sur Android
+    const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
+                      (DB.operations||[]).some(o=>o.invoicePhoto) ||
+                      (DB.vehicles||[]).some(v=>v.photo) ||
+                      (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
+    const jsonStr = JSON.stringify(hasPhotos ? _dbWithoutPhotos(DB) : DB);
     const kb = Math.round(new Blob([jsonStr]).size / 1024);
-    if (kb > 10000) { _ghStatus('Données trop volumineuses pour Gist (> 10 Mo)', false); return; }
-    const note = _dbHasPhotos(DB) ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
-    const payload = { description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`, public: false, files: { 'suivi-materiel-backup.json': { content: jsonStr } } };
-    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' };
-    const res = await _ghFetch('https://api.github.com/gists', { method: 'POST', headers, body: JSON.stringify(payload) });
+    const note = hasPhotos ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
+    if (kb > 10000) { _ghStatus("Données trop volumineuses pour Gist (> 10 Mo)", false); return; }
+    const payload = {
+      description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`,
+      public: false,
+      files: { 'suivi-materiel-backup.json': { content: jsonStr } }
+    };
+    let url = 'https://api.github.com/gists';
+    let method = 'POST';
+    if (gistId) { url = `https://api.github.com/gists/${gistId}`; method = 'PATCH'; }
+    const res = await _ghFetch(url, { method, headers, body: JSON.stringify(payload) });
     if (res.ok) {
       const gist = await res.json();
       gistId = gist.id;
       _ghSave(token, gistId);
       document.getElementById('gh-gist-id').value = gistId;
-      _ghStatus(`✓ Gist créé et sauvegardé !${note}`, true);
+      _ghStatus(`✓ Sauvegardé !${note}`, true);
     } else if (res.status === 401) {
-      _ghStatus('✗ Token invalide ou expiré (401)', false);
+      _ghStatus('✗ Token invalide ou expiré (401) — vérifiez le token', false);
     } else if (res.status === 403) {
       _ghStatus('✗ Accès refusé (403) — le token doit avoir le scope "gist"', false);
+    } else if (res.status === 404 && gistId) {
+      // Gist was deleted, clear ID and retry as new
+      document.getElementById('gh-gist-id').value = '';
+      _ghSave(token, '');
+      _ghStatus('Gist introuvable, nouvelle sauvegarde en cours…');
+      return saveToGithub();
     } else {
       const err = await res.json().catch(() => ({}));
       _ghStatus(`✗ Erreur ${res.status} : ${err.message || 'inconnue'}`, false);
@@ -3463,6 +3278,7 @@ async function saveToGithub() {
     _ghStatus('✗ Erreur réseau : ' + e.message, false);
   }
 }
+
 async function restoreFromGithub() {
   const token  = document.getElementById('gh-token').value.trim();
   const gistId = document.getElementById('gh-gist-id').value.trim();
@@ -3495,8 +3311,7 @@ async function restoreFromGithub() {
     if (!DB.vehicles) DB.vehicles = [];
     if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
     if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
-    DB = _normalizeDB(DB);
-saveDB();
+    saveDB();
     _ghSave(token, gistId);
     selectedTractorId = null;
     document.getElementById('detail-panel-container').innerHTML = '';
