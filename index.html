@@ -3743,3 +3743,57 @@ function _showInstallBar(mode) {
       <button id="btn-install-bar" style="background:#fff;color:#2e7d32;border:none;border-radius:6px;padding:7px 16px;font-weight:700;font-size:14px;cursor:pointer;">Installer</button>
       <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
     bar.querySelector('#btn-install-bar').onclick = () => { installApp(); bar.remove(); };
+  } else if (mode === 'ios') {
+    bar.innerHTML = `
+      <span style="flex:1">📲 Installer : appuyez sur <strong>⬆ Partager</strong> → <strong>Sur l'écran d'accueil</strong></span>
+      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
+  } else {
+    // manual fallback for Android when beforeinstallprompt didn't fire
+    bar.innerHTML = `
+      <span style="flex:1">📲 Installer : appuyez sur <strong>⋮</strong> → <strong>Ajouter à l'écran d'accueil</strong></span>
+      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
+  }
+  document.body.appendChild(bar);
+}
+
+if (!_isStandalone) {
+  if (_isIOS) {
+    _showInstallBar('ios');
+  } else if (_isAndroid) {
+    // show manual instructions immediately; upgrade to auto-prompt if event fires
+    _showInstallBar('manual');
+  }
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _installPrompt = e;
+  document.getElementById('btn-install').style.display = 'inline-block';
+  // upgrade bar to automatic install
+  const existing = document.getElementById('install-bar');
+  if (existing) existing.remove();
+  _showInstallBar('prompt');
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('btn-install').style.display = 'none';
+  _installPrompt = null;
+  const b = document.getElementById('install-bar');
+  if (b) b.remove();
+});
+
+function installApp() {
+  if (!_installPrompt) return;
+  _installPrompt.prompt();
+  _installPrompt.userChoice.then(r => {
+    if (r.outcome === 'accepted') document.getElementById('btn-install').style.display = 'none';
+    _installPrompt = null;
+  });
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
