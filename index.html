@@ -541,7 +541,7 @@
     <button class="btn btn-sm" id="btn-install" style="display:none;" onclick="installApp()" title="Installer l'application">📲 Installer</button>
     <button class="btn btn-sm" onclick="exportData()" title="Exporter toutes les données">💾 Export</button>
     <label class="btn btn-sm" style="cursor:pointer;" title="Importer un fichier de sauvegarde">📂 Import<input type="file" accept=".json" onchange="importData(event)" style="display:none;"></label>
-    <button class="btn btn-sm" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist">☁ GitHub</button>
+    <button class="btn btn-sm" id="btn-github-sync" onclick="openGithubModal()" title="Sauvegarder sur GitHub Gist" style="position:relative;">☁ GitHub<span id="gh-sync-dot" style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#999;"></span></button>
   </div>
 </header>
 
@@ -1227,7 +1227,16 @@
         <label class="form-label">ID du Gist <span style="font-weight:300;font-size:11px;">(auto après 1ère sauvegarde)</span></label>
         <input class="form-input" id="gh-gist-id" placeholder="laisser vide pour créer automatiquement">
       </div>
-      <div id="gh-size-info" style="font-size:11px;color:var(--text-dim);margin-top:2px;"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px;cursor:pointer;">
+        <input type="checkbox" id="gh-autosync" onchange="toggleAutoSync()">
+        Synchronisation automatique en arrière-plan sur cet appareil
+      </label>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:4px;line-height:1.4;">
+        Une fois activée <strong>sur chaque appareil</strong> (téléphone et PC) avec le <strong>même token et le même ID de Gist</strong>,
+        toute saisie est poussée automatiquement vers GitHub, et l'app récupère les données les plus récentes à l'ouverture
+        ou au retour au premier plan. En cas de modifications sur les deux appareils en même temps, l'app vous demandera laquelle garder.
+      </p>
+      <div id="gh-size-info" style="font-size:11px;color:var(--text-dim);margin-top:6px;"></div>
       <div id="gh-status" style="font-size:13px;min-height:20px;margin-top:8px;font-weight:500;"></div>
     </div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:6px;">
@@ -1346,10 +1355,13 @@ function loadDB() {
   if (!DB.vehicles) DB.vehicles = [];
   if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
   if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
+  if (!DB.updatedAt) DB.updatedAt = 0;
 }
 
-function saveDB() {
+function saveDB(opts) {
+  DB.updatedAt = Date.now();
   localStorage.setItem('tractorlog_v2', JSON.stringify(DB));
+  if (!opts || !opts.skipSync) scheduleAutoPush();
 }
 
 // ===================== PAGES =====================
@@ -2943,6 +2955,12 @@ function savePleinVehicle() {
 // ===================== INIT =====================
 loadDB();
 renderFleet();
+checkSyncOnLoad();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkSyncOnLoad();
+});
+window.addEventListener('online', () => checkSyncOnLoad());
+window.addEventListener('focus', () => checkSyncOnLoad());
 
 // ===================== EXPORT / IMPORT =====================
 function resetAllData() {
@@ -3146,8 +3164,16 @@ async function restoreFromGdrive() {
   }
 }
 
-// ===================== GITHUB GIST BACKUP =====================
+// ===================== GITHUB GIST BACKUP + AUTO-SYNC =====================
+// Principe : un seul Gist privé partagé sert de point de rencontre entre
+// tous les appareils (téléphone + PC). Chaque appareil pousse automatiquement
+// ses changements (debounce) et vérifie au démarrage / à la reprise si
+// une version plus récente existe ailleurs. En cas de modifications
+// concurrentes sur deux appareils, l'utilisateur choisit quelle version garder.
 const GH_SETTINGS_KEY = 'gh_backup_settings';
+const GH_FILE_NAME = 'suivi-materiel-backup.json';
+let _ghPushTimer = null;
+let _ghSyncing = false;
 
 // Fallback XHR si fetch POST echoue sur Android
 function _ghFetch(url, options) {
@@ -3161,7 +3187,8 @@ function _ghFetch(url, options) {
       xhr.onload = function() {
         var s2 = this.status, t = this.responseText;
         resolve({ ok: s2 >= 200 && s2 < 300, status: s2,
-          json: function() { try { return Promise.resolve(JSON.parse(t)); } catch(e) { return Promise.reject(e); } }
+          json: function() { try { return Promise.resolve(JSON.parse(t)); } catch(e) { return Promise.reject(e); } },
+          text: function() { return Promise.resolve(t); }
         });
       };
       xhr.onerror = function() { reject(new TypeError('Erreur réseau')); };
@@ -3171,19 +3198,32 @@ function _ghFetch(url, options) {
   });
 }
 
+function _ghSettings() {
+  return Object.assign({ token: '', gistId: '', autoSync: false, lastSyncedAt: 0 },
+    JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}'));
+}
+
+function _ghSave(patch) {
+  const s = Object.assign(_ghSettings(), patch);
+  localStorage.setItem(GH_SETTINGS_KEY, JSON.stringify(s));
+  return s;
+}
+
+function _ghHeaders(token, extra) {
+  return Object.assign({ 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }, extra || {});
+}
+
 function openGithubModal() {
-  const s = JSON.parse(localStorage.getItem(GH_SETTINGS_KEY) || '{}');
+  const s = _ghSettings();
   document.getElementById('gh-token').value = s.token || '';
   document.getElementById('gh-gist-id').value = s.gistId || '';
+  const autoEl = document.getElementById('gh-autosync');
+  if (autoEl) autoEl.checked = !!s.autoSync;
   document.getElementById('gh-status').textContent = '';
   const kb = Math.round(new Blob([JSON.stringify(DB)]).size / 1024);
   const sizeEl = document.getElementById('gh-size-info');
   if (sizeEl) sizeEl.textContent = `Données actuelles : ${kb} KB${kb > 5000 ? ' — photos exclues automatiquement' : ''}`;
   openModal('modal-github');
-}
-
-function _ghSave(token, gistId) {
-  localStorage.setItem(GH_SETTINGS_KEY, JSON.stringify({ token, gistId }));
 }
 
 function _ghStatus(msg, state) {
@@ -3209,14 +3249,21 @@ function _dbWithoutPhotos(db) {
   });
 }
 
+function _updateSyncBadge(state, title) {
+  const btn = document.getElementById('btn-github-sync');
+  const dot = document.getElementById('gh-sync-dot');
+  if (!btn || !dot) return;
+  const colors = { ok: '#2e7d32', syncing: '#f9a825', error: '#c62828', conflict: '#c62828', off: '#999' };
+  dot.style.background = colors[state] || colors.off;
+  btn.title = title || '';
+}
+
 async function testGithubConnection() {
   const token = document.getElementById('gh-token').value.trim();
   if (!token) { _ghStatus('⚠ Token requis.', false); return; }
   _ghStatus('Test en cours…');
   try {
-    const res = await _ghFetch('https://api.github.com/user', {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
-    });
+    const res = await _ghFetch('https://api.github.com/user', { headers: _ghHeaders(token) });
     if (res.ok) {
       const u = await res.json();
       _ghStatus(`✓ Connecté en tant que ${u.login} (@${u.login})`, true);
@@ -3230,95 +3277,202 @@ async function testGithubConnection() {
   }
 }
 
-async function saveToGithub() {
-  const token = document.getElementById('gh-token').value.trim();
-  let gistId  = document.getElementById('gh-gist-id').value.trim();
-  if (!token) { _ghStatus('⚠ Token requis.', false); return; }
-  _ghStatus('Sauvegarde en cours…');
+// Construit le JSON à envoyer (retire les photos si trop volumineux)
+function _ghBuildPayloadJson() {
+  const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
+                    (DB.operations||[]).some(o=>o.invoicePhoto) ||
+                    (DB.vehicles||[]).some(v=>v.photo) ||
+                    (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
+  const jsonStr = JSON.stringify(hasPhotos ? _dbWithoutPhotos(DB) : DB);
+  return { jsonStr, hasPhotos };
+}
+
+// Envoie l'état local vers le Gist. silent=true pour l'auto-sync (pas de confirm()).
+async function pushToGithub(silent) {
+  const s = _ghSettings();
+  const token = silent ? s.token : document.getElementById('gh-token').value.trim();
+  let gistId  = silent ? s.gistId : document.getElementById('gh-gist-id').value.trim();
+  if (!token) { if (!silent) _ghStatus('⚠ Token requis.', false); return false; }
+  if (!silent) _ghStatus('Sauvegarde en cours…');
+  if (silent) _updateSyncBadge('syncing', 'Synchronisation…');
   try {
-    // Strip photos AVANT serialize pour eviter payload 100 MB sur Android
-    const hasPhotos = (DB.tractors||[]).some(t=>t.photo) ||
-                      (DB.operations||[]).some(o=>o.invoicePhoto) ||
-                      (DB.vehicles||[]).some(v=>v.photo) ||
-                      (DB.entretiens_vehicules||[]).some(e=>e.invoicePhoto);
-    const jsonStr = JSON.stringify(hasPhotos ? _dbWithoutPhotos(DB) : DB);
+    const { jsonStr, hasPhotos } = _ghBuildPayloadJson();
     const kb = Math.round(new Blob([jsonStr]).size / 1024);
     const note = hasPhotos ? ` (photos exclues, ${kb} KB)` : ` (${kb} KB)`;
-    if (kb > 10000) { _ghStatus("Données trop volumineuses pour Gist (> 10 Mo)", false); return; }
+    if (kb > 10000) {
+      if (!silent) _ghStatus("Données trop volumineuses pour Gist (> 10 Mo)", false);
+      _updateSyncBadge('error', 'Données trop volumineuses');
+      return false;
+    }
     const payload = {
       description: `Suivi Matériel — ${new Date().toLocaleString('fr')}`,
       public: false,
-      files: { 'suivi-materiel-backup.json': { content: jsonStr } }
+      files: { [GH_FILE_NAME]: { content: jsonStr } }
     };
     let url = 'https://api.github.com/gists';
     let method = 'POST';
     if (gistId) { url = `https://api.github.com/gists/${gistId}`; method = 'PATCH'; }
-    const res = await _ghFetch(url, { method, headers, body: JSON.stringify(payload) });
+    const res = await _ghFetch(url, { method, headers: _ghHeaders(token, { 'Content-Type': 'application/json' }), body: JSON.stringify(payload) });
     if (res.ok) {
       const gist = await res.json();
       gistId = gist.id;
-      _ghSave(token, gistId);
-      document.getElementById('gh-gist-id').value = gistId;
-      _ghStatus(`✓ Sauvegardé !${note}`, true);
+      _ghSave({ token, gistId, lastSyncedAt: DB.updatedAt });
+      const gistEl = document.getElementById('gh-gist-id');
+      if (gistEl) gistEl.value = gistId;
+      if (!silent) _ghStatus(`✓ Sauvegardé !${note}`, true);
+      _updateSyncBadge('ok', 'Synchronisé — ' + new Date().toLocaleTimeString('fr'));
+      return true;
     } else if (res.status === 401) {
-      _ghStatus('✗ Token invalide ou expiré (401) — vérifiez le token', false);
+      if (!silent) _ghStatus('✗ Token invalide ou expiré (401) — vérifiez le token', false);
+      _updateSyncBadge('error', 'Token invalide');
     } else if (res.status === 403) {
-      _ghStatus('✗ Accès refusé (403) — le token doit avoir le scope "gist"', false);
+      if (!silent) _ghStatus('✗ Accès refusé (403) — le token doit avoir le scope "gist"', false);
+      _updateSyncBadge('error', 'Accès refusé (403)');
     } else if (res.status === 404 && gistId) {
-      // Gist was deleted, clear ID and retry as new
-      document.getElementById('gh-gist-id').value = '';
-      _ghSave(token, '');
-      _ghStatus('Gist introuvable, nouvelle sauvegarde en cours…');
-      return saveToGithub();
+      _ghSave({ gistId: '' });
+      const gistEl = document.getElementById('gh-gist-id');
+      if (gistEl) gistEl.value = '';
+      if (!silent) _ghStatus('Gist introuvable, nouvelle sauvegarde en cours…');
+      return pushToGithub(silent);
     } else {
       const err = await res.json().catch(() => ({}));
-      _ghStatus(`✗ Erreur ${res.status} : ${err.message || 'inconnue'}`, false);
+      if (!silent) _ghStatus(`✗ Erreur ${res.status} : ${err.message || 'inconnue'}`, false);
+      _updateSyncBadge('error', `Erreur ${res.status}`);
     }
   } catch (e) {
-    _ghStatus('✗ Erreur réseau : ' + e.message, false);
+    if (!silent) _ghStatus('✗ Erreur réseau : ' + e.message, false);
+    _updateSyncBadge('error', 'Erreur réseau : ' + e.message);
   }
+  return false;
 }
 
+// Récupère le contenu brut du Gist (sans l'appliquer). Retourne {json, gist} ou null.
+async function _ghFetchRemote(token, gistId) {
+  const res = await _ghFetch(`https://api.github.com/gists/${gistId}`, { headers: _ghHeaders(token) });
+  if (!res.ok) return { error: res.status };
+  const gist = await res.json();
+  const fileKey = Object.keys(gist.files || {}).find(k => k.endsWith('.json'));
+  if (!fileKey) return { error: 'format' };
+  let content = gist.files[fileKey].content;
+  if (gist.files[fileKey].truncated) {
+    const raw = await _ghFetch(gist.files[fileKey].raw_url, { headers: _ghHeaders(token) });
+    content = await raw.text();
+  }
+  try { return { data: JSON.parse(content), gist }; } catch (e) { return { error: 'parse' }; }
+}
+
+function _applyRemoteDB(remote) {
+  DB = remote;
+  if (!DB.travaux_log) DB.travaux_log = [];
+  if (!DB.vehicles) DB.vehicles = [];
+  if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
+  if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
+  if (!DB.updatedAt) DB.updatedAt = Date.now();
+  localStorage.setItem('tractorlog_v2', JSON.stringify(DB));
+  selectedTractorId = null;
+  const panel = document.getElementById('detail-panel-container');
+  if (panel) panel.innerHTML = '';
+  renderFleet();
+}
+
+// Bouton manuel "Restaurer"
 async function restoreFromGithub() {
   const token  = document.getElementById('gh-token').value.trim();
   const gistId = document.getElementById('gh-gist-id').value.trim();
   if (!token)  { _ghStatus('⚠ Token requis.', false); return; }
   if (!gistId) { _ghStatus('⚠ ID du Gist requis pour restaurer.', false); return; }
   _ghStatus('Téléchargement en cours…');
+  const r = await _ghFetchRemote(token, gistId);
+  if (r.error === 401) { _ghStatus('✗ Token invalide ou expiré (401)', false); return; }
+  if (r.error === 404) { _ghStatus('✗ Gist introuvable — vérifiez l\'ID (404)', false); return; }
+  if (r.error) { _ghStatus(`✗ Erreur ${r.error}`, false); return; }
+  if (!r.data.tractors) { _ghStatus('✗ Format invalide', false); return; }
+  if (!confirm(`Restaurer ${r.data.tractors.length} machine(s) depuis GitHub Gist ? Les données actuelles seront remplacées.`)) return;
+  _applyRemoteDB(r.data);
+  _ghSave({ token, gistId, lastSyncedAt: DB.updatedAt });
+  closeModal('modal-github');
+  _updateSyncBadge('ok', 'Restauré depuis GitHub');
+}
+
+// Bouton manuel "Sauvegarder"
+function saveToGithub() { return pushToGithub(false); }
+
+function toggleAutoSync() {
+  const el = document.getElementById('gh-autosync');
+  const s = _ghSave({ autoSync: !!(el && el.checked) });
+  if (s.autoSync && s.token && s.gistId) {
+    _ghStatus('Synchronisation automatique activée pour cet appareil.', true);
+    checkSyncOnLoad();
+  } else if (s.autoSync) {
+    _ghStatus('⚠ Renseignez le token et sauvegardez au moins une fois pour activer la sync auto.', false);
+  } else {
+    _updateSyncBadge('off', 'Synchronisation automatique désactivée');
+  }
+}
+
+// Pousse les changements locaux automatiquement, avec un léger délai (debounce)
+// pour regrouper les modifications rapprochées et éviter de spammer l'API.
+function scheduleAutoPush() {
+  const s = _ghSettings();
+  if (!s.autoSync || !s.token || !s.gistId) return;
+  if (_ghPushTimer) clearTimeout(_ghPushTimer);
+  _ghPushTimer = setTimeout(() => {
+    if (navigator.onLine === false) { _updateSyncBadge('error', 'Hors ligne — en attente de connexion'); return; }
+    pushToGithub(true);
+  }, 4000);
+}
+
+// Au démarrage / à la reprise de l'app : compare l'horodatage local à celui
+// du Gist distant. Si le distant est plus récent et qu'on n'a pas de
+// modification locale non synchronisée, on récupère automatiquement.
+// Si les deux ont changé depuis la dernière synchro, on demande à l'utilisateur.
+async function checkSyncOnLoad() {
+  const s = _ghSettings();
+  if (!s.autoSync || !s.token || !s.gistId || _ghSyncing) return;
+  if (navigator.onLine === false) { _updateSyncBadge('error', 'Hors ligne'); return; }
+  _ghSyncing = true;
+  _updateSyncBadge('syncing', 'Vérification de la synchronisation…');
   try {
-    const res = await _ghFetch(`https://api.github.com/gists/${gistId}`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
-    });
-    if (!res.ok) {
-      if (res.status === 401) { _ghStatus('✗ Token invalide ou expiré (401)', false); return; }
-      if (res.status === 404) { _ghStatus('✗ Gist introuvable — vérifiez l\'ID (404)', false); return; }
-      _ghStatus(`✗ Erreur ${res.status}`, false); return;
+    const r = await _ghFetchRemote(s.token, s.gistId);
+    if (r.error || !r.data) { _updateSyncBadge('error', 'Impossible de vérifier la synchro'); return; }
+    const remoteUpdatedAt = r.data.updatedAt || 0;
+    const localUpdatedAt = DB.updatedAt || 0;
+    const localChangedSinceSync = localUpdatedAt > (s.lastSyncedAt || 0);
+    const remoteChangedSinceSync = remoteUpdatedAt > (s.lastSyncedAt || 0);
+
+    if (remoteChangedSinceSync && localChangedSinceSync && remoteUpdatedAt !== localUpdatedAt) {
+      // Conflit : modifications sur les deux appareils depuis la dernière synchro
+      _updateSyncBadge('conflict', 'Conflit de synchronisation détecté');
+      const localDate = new Date(localUpdatedAt).toLocaleString('fr');
+      const remoteDate = new Date(remoteUpdatedAt).toLocaleString('fr');
+      const keepRemote = confirm(
+        `⚠ Des modifications existent à la fois sur cet appareil (${localDate}) et sur GitHub (${remoteDate}, un autre appareil).\n\n` +
+        `OK = utiliser la version GitHub (plus récente ailleurs) et écraser celle-ci.\n` +
+        `Annuler = garder cet appareil et écraser GitHub avec cette version.`
+      );
+      if (keepRemote) {
+        _applyRemoteDB(r.data);
+        _ghSave({ lastSyncedAt: DB.updatedAt });
+        _updateSyncBadge('ok', 'Conflit résolu — version GitHub conservée');
+      } else {
+        await pushToGithub(true);
+        _updateSyncBadge('ok', 'Conflit résolu — cet appareil conservé');
+      }
+    } else if (remoteUpdatedAt > localUpdatedAt) {
+      // Le distant est plus récent, pas de conflit -> on récupère silencieusement
+      _applyRemoteDB(r.data);
+      _ghSave({ lastSyncedAt: DB.updatedAt });
+      _updateSyncBadge('ok', 'Mis à jour depuis un autre appareil');
+    } else if (localUpdatedAt > remoteUpdatedAt) {
+      // Le local est plus récent -> on pousse
+      await pushToGithub(true);
+    } else {
+      _updateSyncBadge('ok', 'Déjà synchronisé');
     }
-    const gist = await res.json();
-    const fileKey = Object.keys(gist.files).find(k => k.endsWith('.json'));
-    if (!fileKey) { _ghStatus('✗ Aucun fichier JSON trouvé dans ce Gist', false); return; }
-    // content may be truncated — fetch raw_url if needed
-    let content = gist.files[fileKey].content;
-    if (gist.files[fileKey].truncated) {
-      const raw = await _ghFetch(gist.files[fileKey].raw_url, { headers: { 'Authorization': `Bearer ${token}` } });
-      content = await raw.text();
-    }
-    const imported = JSON.parse(content);
-    if (!imported.tractors) throw new Error('Format invalide');
-    if (!confirm(`Restaurer ${imported.tractors.length} machine(s) depuis GitHub Gist ? Les données actuelles seront remplacées.`)) return;
-    DB = imported;
-    if (!DB.travaux_log) DB.travaux_log = [];
-    if (!DB.vehicles) DB.vehicles = [];
-    if (!DB.pleins_vehicules) DB.pleins_vehicules = [];
-    if (!DB.entretiens_vehicules) DB.entretiens_vehicules = [];
-    saveDB();
-    _ghSave(token, gistId);
-    selectedTractorId = null;
-    document.getElementById('detail-panel-container').innerHTML = '';
-    renderFleet();
-    closeModal('modal-github');
   } catch (e) {
-    _ghStatus('✗ Erreur : ' + e.message, false);
+    _updateSyncBadge('error', 'Erreur de synchronisation : ' + e.message);
+  } finally {
+    _ghSyncing = false;
   }
 }
 
