@@ -1813,7 +1813,9 @@ function getAlerts(t) {
     if (item.type === 'note' || !item.interval) return;
     const interval = custom[item.id] || item.interval;
     const matching = ops.filter(o => (o.types||[o.type]).includes(item.id)).sort((a,b) => b.hours - a.hours);
-    const last = matching[0] ? matching[0].hours : (t.lastServiceHours || 0);
+    const opBased = matching[0] ? matching[0].hours : (t.lastServiceHours || 0);
+    const dismissedHours = (t.dismissedAlerts && t.dismissedAlerts[item.id]) || 0;
+    const last = Math.max(opBased, dismissedHours);
     const next = last + interval;
     const remaining = next - t.hours;
     const base = { tractor: t.name, tractorId: t.id, itemId: item.id, itemLabel: item.label };
@@ -1867,7 +1869,8 @@ function renderAlerts() {
         + '<span class="log-desc" style="flex:1;">' + a.label + '</span>'
         + (a.isGNR
             ? '<button class="btn btn-sm btn-warn" onclick="acquitterParkGNR()">✔ Acquitter</button>'
-            : '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="markAlertDone(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')">✔ Fait</button>')
+            : '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="markAlertDone(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')">✔ Fait</button>'
+              + '<button class="btn btn-sm btn-danger" style="margin-left:4px;" onclick="dismissAlert(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')" title="Supprimer cette alerte sans enregistrer d\'opération">🗑</button>')
         + '</div>';
     }).join('');
   }
@@ -1879,15 +1882,19 @@ function renderAlerts() {
         + '<span class="log-desc" style="flex:1;">' + a.label + '</span>'
         + (a.isGNR
             ? '<button class="btn btn-sm btn-warn" onclick="acquitterParkGNR()">✔ Acquitter</button>'
-            : '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="markAlertDone(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')">✔ Fait</button>')
+            : '<button class="btn btn-sm" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="markAlertDone(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')">✔ Fait</button>'
+              + '<button class="btn btn-sm btn-danger" style="margin-left:4px;" onclick="dismissAlert(\'' + a.tractorId + '\',\'' + a.itemId + '\',\'' + _jsStr(a.itemLabel) + '\')" title="Supprimer cette alerte sans enregistrer d\'opération">🗑</button>')
         + '</div>';
     }).join('');
   }
   container.innerHTML = html;
 }
 
+let pendingAlertItemId = null;
+
 function markAlertDone(tractorId, itemId, itemLabel) {
   openOpModal(tractorId);
+  pendingAlertItemId = null;
   requestAnimationFrame(function() {
     requestAnimationFrame(function() {
       const mappedId = ALERT_ITEM_TO_OPTYPE[itemId] || itemId;
@@ -1898,17 +1905,34 @@ function markAlertDone(tractorId, itemId, itemLabel) {
       } else {
         // Pas de case correspondante pour cet item : on coche "Autre" et on
         // pré-remplit la nature avec le libellé de l'alerte pour que la
-        // fiche reste utilisable au lieu de rester vide.
+        // fiche reste utilisable au lieu de rester vide. On mémorise aussi
+        // l'id d'origine pour que l'enregistrement de l'opération soit
+        // reconnu par cette même alerte et la fasse bien disparaître.
         const autreCbk = document.getElementById('ot-autre');
         if (autreCbk) {
           autreCbk.checked = true;
           autreCbk.dispatchEvent(new Event('change'));
           const natureEl = document.getElementById('op-nature');
           if (natureEl && itemLabel) natureEl.value = itemLabel;
+          pendingAlertItemId = itemId;
         }
       }
     });
   });
+}
+
+// Supprime une alerte sans passer par la fiche d'opération : on repousse
+// simplement son prochain déclenchement à partir des heures actuelles de la
+// machine (utile pour une fausse alerte ou un entretien fait ailleurs / non
+// tracé). L'alerte réapparaîtra normalement au prochain seuil.
+function dismissAlert(tractorId, itemId, itemLabel) {
+  const t = DB.tractors.find(x => x.id === tractorId);
+  if (!t) return;
+  if (!confirm(`Supprimer l'alerte "${itemLabel}" ?\n\nElle ne réapparaîtra qu'au prochain seuil (basé sur les heures actuelles), sans qu'aucune opération ne soit enregistrée dans l'historique.`)) return;
+  if (!t.dismissedAlerts) t.dismissedAlerts = {};
+  t.dismissedAlerts[itemId] = t.hours;
+  saveDB();
+  renderAlerts();
 }
 
 function renderHistorique() {
@@ -2421,6 +2445,7 @@ function toggleOpNatureField() {
 
 function openOpModal(id) {
   currentOpTractorId = id;
+  pendingAlertItemId = null;
   const t = DB.tractors.find(x => x.id === id);
   document.getElementById('modal-op-title').textContent = `Opération — ${t.name}`;
   document.getElementById('op-date').value = new Date().toISOString().split('T')[0];
@@ -2443,6 +2468,11 @@ function saveOperation() {
   const hours = parseInt(document.getElementById('op-hours').value) || t.hours;
   const types = [...document.querySelectorAll('#op-type-picker input:checked')].map(i => i.value);
   if (types.length === 0) { alert('Sélectionnez au moins un type d\'opération.'); return; }
+  // Si cette fiche a été ouverte via "✔ Fait" sur une alerte sans case dédiée
+  // (repli sur "Autre"), on tague aussi l'opération avec l'id d'origine de
+  // l'alerte pour qu'elle soit reconnue comme traitée et disparaisse.
+  if (pendingAlertItemId && !types.includes(pendingAlertItemId)) types.push(pendingAlertItemId);
+  pendingAlertItemId = null;
   const nature = types.includes('autre') ? document.getElementById('op-nature').value.trim() : '';
   const notes = document.getElementById('op-notes').value.trim();
   const cost = parseFloat(document.getElementById('op-cost').value) || 0;
@@ -3713,57 +3743,3 @@ function _showInstallBar(mode) {
       <button id="btn-install-bar" style="background:#fff;color:#2e7d32;border:none;border-radius:6px;padding:7px 16px;font-weight:700;font-size:14px;cursor:pointer;">Installer</button>
       <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
     bar.querySelector('#btn-install-bar').onclick = () => { installApp(); bar.remove(); };
-  } else if (mode === 'ios') {
-    bar.innerHTML = `
-      <span style="flex:1">📲 Installer : appuyez sur <strong>⬆ Partager</strong> → <strong>Sur l'écran d'accueil</strong></span>
-      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
-  } else {
-    // manual fallback for Android when beforeinstallprompt didn't fire
-    bar.innerHTML = `
-      <span style="flex:1">📲 Installer : appuyez sur <strong>⋮</strong> → <strong>Ajouter à l'écran d'accueil</strong></span>
-      <button onclick="document.getElementById('install-bar').remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:16px;">✕</button>`;
-  }
-  document.body.appendChild(bar);
-}
-
-if (!_isStandalone) {
-  if (_isIOS) {
-    _showInstallBar('ios');
-  } else if (_isAndroid) {
-    // show manual instructions immediately; upgrade to auto-prompt if event fires
-    _showInstallBar('manual');
-  }
-}
-
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  _installPrompt = e;
-  document.getElementById('btn-install').style.display = 'inline-block';
-  // upgrade bar to automatic install
-  const existing = document.getElementById('install-bar');
-  if (existing) existing.remove();
-  _showInstallBar('prompt');
-});
-
-window.addEventListener('appinstalled', () => {
-  document.getElementById('btn-install').style.display = 'none';
-  _installPrompt = null;
-  const b = document.getElementById('install-bar');
-  if (b) b.remove();
-});
-
-function installApp() {
-  if (!_installPrompt) return;
-  _installPrompt.prompt();
-  _installPrompt.userChoice.then(r => {
-    if (r.outcome === 'accepted') document.getElementById('btn-install').style.display = 'none';
-    _installPrompt = null;
-  });
-}
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
-}
-</script>
-</body>
-</html>
